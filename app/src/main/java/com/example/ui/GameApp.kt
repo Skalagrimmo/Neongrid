@@ -49,6 +49,9 @@ fun GameApp(
                         },
                         onViewControls = {
                             viewModel.changeScreen(GameViewModel.Screen.CONTROLS)
+                        },
+                        onOpenHtml5Canvas = {
+                            viewModel.changeScreen(GameViewModel.Screen.HTML5_CANVAS)
                         }
                     )
                 }
@@ -207,6 +210,14 @@ fun GameApp(
 
                 GameViewModel.Screen.CONTROLS -> {
                     ControlsScreen(
+                        onBackToMenu = {
+                            viewModel.changeScreen(GameViewModel.Screen.MENU)
+                        }
+                    )
+                }
+
+                GameViewModel.Screen.HTML5_CANVAS -> {
+                    Html5CanvasScreen(
                         onBackToMenu = {
                             viewModel.changeScreen(GameViewModel.Screen.MENU)
                         }

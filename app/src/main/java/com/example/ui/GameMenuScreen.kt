@@ -29,7 +29,8 @@ fun GameMenuScreen(
     modifier: Modifier = Modifier,
     onStartNewGame: () -> Unit,
     onLoadGame: () -> Unit,
-    onViewControls: () -> Unit
+    onViewControls: () -> Unit,
+    onOpenHtml5Canvas: () -> Unit
 ) {
     Box(
         modifier = modifier
@@ -158,6 +159,30 @@ fun GameMenuScreen(
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "DIRECTIVES MATRIX",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            // HTML5 Canvas Isometric Simulator button (Immersive Green highlight style)
+            Button(
+                onClick = onOpenHtml5Canvas,
+                colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.5f)),
+                border = BorderStroke(1.dp, ImmersiveGreen.copy(alpha = 0.8f)),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("menu_html5_canvas_button")
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "HTML5 Canvas Grid", tint = ImmersiveGreen)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "HTML5 CANVAS GRID",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,

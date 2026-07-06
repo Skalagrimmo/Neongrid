@@ -2,11 +2,16 @@ package com.example.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
@@ -14,7 +19,10 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.model.*
 import com.example.ui.theme.*
 import kotlin.math.*
@@ -25,7 +33,6 @@ fun GameCanvas(
     modifier: Modifier = Modifier,
     onMovePlayer: (Float, Float) -> Unit = { _, _ -> }
 ) {
-    val tick = viewModel.gameTick // Triggers recomposition on every game loop tick
     val player = viewModel.player
     val enemies = viewModel.enemies
     val levelMap = viewModel.gameLevels[viewModel.currentZLevel]
@@ -49,32 +56,37 @@ fun GameCanvas(
         return Offset(screenX, screenY)
     }
 
-    Canvas(
-        modifier = modifier
-            .fillMaxSize()
-            .background(ImmersiveBgDark)
-            .pointerInput(Unit) {
-                // Drag input to slide player (movement stick emulation direct on screen)
-                detectDragGestures(
-                    onDragStart = {},
-                    onDragEnd = { onMovePlayer(0f, 0f) },
-                    onDragCancel = { onMovePlayer(0f, 0f) },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        // Normalize drag amount to directional vectors
-                        val len = sqrt(dragAmount.x * dragAmount.x + dragAmount.y * dragAmount.y)
-                        if (len > 0.5f) {
-                            // Translate screen coordinates to isometric grid inputs
-                            // Isometric X-axis is down-right, Y-axis is down-left on screen
-                            val dxGrid = (dragAmount.x / tileHalfWidth + dragAmount.y / tileHalfHeight) / 2f
-                            val dyGrid = (-dragAmount.x / tileHalfWidth + dragAmount.y / tileHalfHeight) / 2f
-                            // Scale up microscopic frame deltas for responsive drag movement
-                            onMovePlayer(dxGrid * 15f, dyGrid * 15f)
+    val isDetected = enemies.any { !it.isDead && it.pos.z.toInt() == viewModel.currentZLevel && isPlayerInVision(it, player) }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        val boxScope = this
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ImmersiveBgDark)
+                .pointerInput(Unit) {
+                    // Drag input to slide player (movement stick emulation direct on screen)
+                    detectDragGestures(
+                        onDragStart = {},
+                        onDragEnd = { onMovePlayer(0f, 0f) },
+                        onDragCancel = { onMovePlayer(0f, 0f) },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            // Normalize drag amount to directional vectors
+                            val len = sqrt(dragAmount.x * dragAmount.x + dragAmount.y * dragAmount.y)
+                            if (len > 0.5f) {
+                                // Translate screen coordinates to isometric grid inputs
+                                // Isometric X-axis is down-right, Y-axis is down-left on screen
+                                val dxGrid = (dragAmount.x / tileHalfWidth + dragAmount.y / tileHalfHeight) / 2f
+                                val dyGrid = (-dragAmount.x / tileHalfWidth + dragAmount.y / tileHalfHeight) / 2f
+                                // Scale up microscopic frame deltas for responsive drag movement
+                                onMovePlayer(dxGrid * 15f, dyGrid * 15f)
+                            }
                         }
-                    }
-                )
-            }
-    ) {
+                    )
+                }
+        ) {
+        val tick = viewModel.gameTick // Read state inside DrawScope to trigger ONLY draw-phase invalidation
         if (levelMap == null) return@Canvas
 
         // Camera Lock on Player Position
@@ -119,12 +131,16 @@ fun GameCanvas(
             }
 
             // 3. Draw Enemy Vision Cones (Rendered flat on floor beneath characters)
+            val playerIso = toIso(player.pos.x, player.pos.y, player.pos.z)
             for (enemy in enemies) {
                 if (enemy.isDead || enemy.pos.z.toInt() != viewModel.currentZLevel) continue
 
                 val enemyIso = toIso(enemy.pos.x, enemy.pos.y, enemy.pos.z)
-                drawVisionCone(drawPath, enemyIso, enemy, tileHalfWidth, tileHalfHeight)
+                drawVisionCone(drawPath, enemyIso, enemy, player, playerIso, tileHalfWidth, tileHalfHeight)
             }
+
+            // 3b. Draw Player Stealth Signature Radius Ring on Floor
+            drawPlayerStealthRadius(drawPath, playerIso, player, tileHalfWidth, tileHalfHeight, isDetected)
 
             // 4. Draw Sound Noise Ripples
             for (ripple in noiseRipples) {
@@ -144,7 +160,6 @@ fun GameCanvas(
             }
 
             // 6. Draw Player Avatar
-            val playerIso = toIso(player.pos.x, player.pos.y, player.pos.z)
             drawPlayerCharacter(drawPath, playerIso, player, zHeightOffset)
 
             // 7. Draw Ranged Projectiles
@@ -169,6 +184,73 @@ fun GameCanvas(
         // 8. Draw Level Schematic Stack Overlay on Right Corner (Inspired by Z0-Z10 map on reference image)
         drawSchematicZStack(drawPath, viewModel)
     }
+
+    // Blinking detection warning panel
+    if (isDetected) {
+        val pulseAlpha = (sin(System.currentTimeMillis() / 80f) + 1f) / 2f * 0.35f + 0.65f
+        Box(
+            modifier = with(boxScope) {
+                Modifier.align(Alignment.TopCenter)
+            }
+                .padding(top = 16.dp)
+                .background(Color(0xE60D0E10), RoundedCornerShape(6.dp))
+                .border(1.dp, Color(0xFFFF3355), RoundedCornerShape(6.dp))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.alpha(pulseAlpha)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .background(Color(0xFFFF3355), RoundedCornerShape(5.dp))
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "WARNING: VISUAL SIGNATURE COMPROMISED",
+                    color = Color(0xFFFF3355),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+    } else {
+        // Cool normal status badge
+        val sigText = if (player.isInvisible) "GHOST MODE" else if (player.isSneaking) "SNEAK ACTIVE" else "STANDARD EMISSION"
+        val sigColor = if (player.isInvisible) Color(0xFF00FFFF) else if (player.isSneaking) Color(0xFF00FFCC) else Color(0xFFBD93F9)
+        Box(
+            modifier = with(boxScope) {
+                Modifier.align(Alignment.TopCenter)
+            }
+                .padding(top = 16.dp)
+                .background(Color(0xB30D0E10), RoundedCornerShape(6.dp))
+                .border(1.dp, sigColor.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(sigColor, RoundedCornerShape(4.dp))
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "SIGNATURE: $sigText",
+                    color = sigColor,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
+    }
+}
 }
 
 // Function to draw isometric base tiles
@@ -349,47 +431,99 @@ private fun DrawScope.drawIsoStructures(
     }
 }
 
-// Draw Commandos style translucent vision cones
+// Draw Commandos style translucent vision cones with concentric range grids & target locking
 private fun DrawScope.drawVisionCone(
     path: Path,
     origin: Offset,
     enemy: Enemy,
+    player: Player,
+    playerIso: Offset,
     halfW: Float,
     halfH: Float
 ) {
-    val coneColor = when (enemy.alertState) {
-        AlertState.PATROLLING -> Color(0x3300FF66)  // Translucent green
-        AlertState.SUSPICIOUS -> Color(0x44FFCC00) // Translucent yellow-orange
-        AlertState.ALERTED -> Color(0x55FF0055)     // Translucent red-pink
+    val isTracking = isPlayerInVision(enemy, player)
+    
+    val baseColor = when (enemy.alertState) {
+        AlertState.PATROLLING -> Color(0x2200FF66)  // Translucent green
+        AlertState.SUSPICIOUS -> Color(0x33FFCC00) // Translucent yellow
+        AlertState.ALERTED -> Color(0x44FF0055)     // Translucent red
     }
+    
+    val coneColor = if (isTracking) Color(0x55FF0033) else baseColor
 
     val rangePixels = enemy.getVisionRange() * halfW * 1.5f
     val fov = enemy.getVisionConeAngle()
     val baseAngle = enemy.directionAngle
 
-    // Build the vision cone fan path
-    path.reset()
-    path.moveTo(origin.x, origin.y)
     val startAngle = baseAngle - fov / 2f
     val endAngle = baseAngle + fov / 2f
+    val samples = 12
 
-    // Sample points to make an arc in isometric space
-    val samples = 10
+    // 1. Draw Concentric radar grids inside the cone (33%, 66%, 100%)
+    for (pct in listOf(0.33f, 0.66f, 1.0f)) {
+        val currRange = rangePixels * pct
+        path.reset()
+        for (i in 0..samples) {
+            val ratio = i.toFloat() / samples
+            val angle = startAngle + (endAngle - startAngle) * ratio
+            val dx = cos(angle) * currRange
+            val dy = sin(angle) * currRange
+            val pIsoX = origin.x + (dx - dy) * 0.5f
+            val pIsoY = origin.y + (dx + dy) * 0.25f
+            if (i == 0) path.moveTo(pIsoX, pIsoY) else path.lineTo(pIsoX, pIsoY)
+        }
+        
+        val strokeColor = if (isTracking) Color(0xFFFF3355) else coneColor.copy(alpha = 0.8f)
+        val strokeW = if (pct == 1.0f) (if (isTracking) 2.5f else 1.5f) else 1.0f
+        
+        drawPath(
+            path = path,
+            color = strokeColor.copy(alpha = if (pct == 1.0f) 0.8f else 0.25f),
+            style = Stroke(
+                width = strokeW,
+                pathEffect = if (pct < 1.0f) PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f) else null
+            )
+        )
+    }
+
+    // 2. Draw Solid fill of the complete cone
+    path.reset()
+    path.moveTo(origin.x, origin.y)
     for (i in 0..samples) {
         val ratio = i.toFloat() / samples
         val angle = startAngle + (endAngle - startAngle) * ratio
-        // Compute coordinate on flat circular plane
         val dx = cos(angle) * rangePixels
         val dy = sin(angle) * rangePixels
-        // Project to isometric screen coordinates (skew width vs height)
         val pIsoX = origin.x + (dx - dy) * 0.5f
-        val pIsoY = origin.y + (dx + dy) * 0.25f // flatter skew for vision
+        val pIsoY = origin.y + (dx + dy) * 0.25f
         path.lineTo(pIsoX, pIsoY)
     }
     path.close()
-
     drawPath(path = path, color = coneColor)
-    drawPath(path = path, color = coneColor.copy(alpha = 0.8f), style = Stroke(width = 1.5f))
+
+    // 3. Draw high-tension red threat laser line when player is target locked
+    if (isTracking) {
+        val headCenterY = origin.y - 32f
+        val playerCenterY = playerIso.y - 18f
+        
+        // Neon warning laser line
+        drawLine(
+            color = Color(0xFFFF0055),
+            start = Offset(origin.x, headCenterY),
+            end = Offset(playerIso.x, playerCenterY),
+            strokeWidth = 2f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 6f), System.currentTimeMillis() / -12f)
+        )
+        
+        // Locked Reticle rings on player
+        val lockPulse = sin(System.currentTimeMillis() / 80f) * 4f
+        drawCircle(
+            color = Color(0xFFFF0055),
+            radius = 12f + lockPulse,
+            center = Offset(playerIso.x, playerCenterY),
+            style = Stroke(width = 1.5f)
+        )
+    }
 }
 
 // Isometric ellipse/oval ring drawing for noise ripples
@@ -604,4 +738,98 @@ private fun DrawScope.drawSchematicZStack(path: Path, viewModel: GameViewModel) 
             }
         }
     }
+}
+
+private fun isPlayerInVision(enemy: Enemy, player: Player): Boolean {
+    if (player.isInvisible || enemy.isDead) return false
+    val dist = enemy.pos.distanceTo(player.pos)
+    val visionRange = enemy.getVisionRange()
+    if (dist > visionRange) return false
+
+    val dx = player.pos.x - enemy.pos.x
+    val dy = player.pos.y - enemy.pos.y
+    val angleToPlayer = atan2(dy, dx)
+
+    var diff = abs(angleToPlayer - enemy.directionAngle)
+    while (diff > PI) diff = (2 * PI - diff).toFloat()
+
+    return diff <= enemy.getVisionConeAngle() / 2f
+}
+
+private fun DrawScope.drawPlayerStealthRadius(
+    path: Path,
+    center: Offset,
+    player: Player,
+    halfW: Float,
+    halfH: Float,
+    isDetected: Boolean
+) {
+    val stealthRadiusGrid = if (player.isSneaking) 1.5f else 3.0f
+    val radiusX = stealthRadiusGrid * halfW * 1.5f
+    val radiusY = stealthRadiusGrid * halfH * 1.5f
+
+    val pulseSpeed = if (isDetected) 100f else 300f
+    val pulse = sin(System.currentTimeMillis() / pulseSpeed) * 0.05f
+    
+    val ringColor = when {
+        isDetected -> Color(0xFFFF3355) // Cyber Red warning
+        player.isInvisible -> Color(0x9900F0FF) // Glowing cyan
+        player.isSneaking -> Color(0xFF00FF66) // Soft green secure
+        else -> Color(0xFFBD93F9) // Purple normal signature
+    }
+
+    // Draw the main ellipse
+    path.reset()
+    path.addOval(androidx.compose.ui.geometry.Rect(
+        left = center.x - radiusX * (1f + pulse),
+        top = center.y - radiusY * (1f + pulse),
+        right = center.x + radiusX * (1f + pulse),
+        bottom = center.y + radiusY * (1f + pulse)
+    ))
+    
+    drawPath(
+        path = path, 
+        color = ringColor.copy(alpha = 0.06f)
+    )
+    drawPath(
+        path = path, 
+        color = ringColor.copy(alpha = 0.6f), 
+        style = Stroke(
+            width = 1.5f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), System.currentTimeMillis() / 20f)
+        )
+    )
+
+    // Inner secondary ring
+    path.reset()
+    path.addOval(androidx.compose.ui.geometry.Rect(
+        left = center.x - radiusX * 0.4f,
+        top = center.y - radiusY * 0.4f,
+        right = center.x + radiusX * 0.4f,
+        bottom = center.y + radiusY * 0.4f
+    ))
+    drawPath(
+        path = path,
+        color = ringColor.copy(alpha = 0.25f),
+        style = Stroke(
+            width = 1f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), -System.currentTimeMillis() / 40f)
+        )
+    )
+
+    // Corner brackets around the player feet
+    val bSize = 8f
+    val gap = 14f
+    // Top-left
+    drawLine(ringColor, Offset(center.x - gap, center.y - gap/2f), Offset(center.x - gap + bSize, center.y - gap/2f), strokeWidth = 2f)
+    drawLine(ringColor, Offset(center.x - gap, center.y - gap/2f), Offset(center.x - gap, center.y - gap/2f + bSize/2f), strokeWidth = 2f)
+    // Top-right
+    drawLine(ringColor, Offset(center.x + gap, center.y - gap/2f), Offset(center.x + gap - bSize, center.y - gap/2f), strokeWidth = 2f)
+    drawLine(ringColor, Offset(center.x + gap, center.y - gap/2f), Offset(center.x + gap, center.y - gap/2f + bSize/2f), strokeWidth = 2f)
+    // Bottom-left
+    drawLine(ringColor, Offset(center.x - gap, center.y + gap/2f), Offset(center.x - gap + bSize, center.y + gap/2f), strokeWidth = 2f)
+    drawLine(ringColor, Offset(center.x - gap, center.y + gap/2f), Offset(center.x - gap, center.y + gap/2f - bSize/2f), strokeWidth = 2f)
+    // Bottom-right
+    drawLine(ringColor, Offset(center.x + gap, center.y + gap/2f), Offset(center.x + gap - bSize, center.y + gap/2f), strokeWidth = 2f)
+    drawLine(ringColor, Offset(center.x + gap, center.y + gap/2f), Offset(center.x + gap, center.y + gap/2f - bSize/2f), strokeWidth = 2f)
 }

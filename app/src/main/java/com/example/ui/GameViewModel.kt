@@ -27,7 +27,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         PLAY,
         SKILL_TREE,
         LOADOUT,
-        CONTROLS
+        CONTROLS,
+        HTML5_CANVAS
     }
 
     var currentScreen by mutableStateOf(Screen.MENU)
@@ -708,6 +709,57 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- CONTROLLER ACTIONS ---
 
+    private val playerRadius = 0.35f
+
+    private fun checkCollisionAt(x: Float, y: Float, z: Int): Boolean {
+        val map = gameLevels[z] ?: return true
+
+        // Out of bounds is a collision
+        if (x - playerRadius < 0f || x + playerRadius >= map.width ||
+            y - playerRadius < 0f || y + playerRadius >= map.height) {
+            return true
+        }
+
+        val minX = (x - playerRadius).toInt().coerceIn(0, map.width - 1)
+        val maxX = (x + playerRadius).toInt().coerceIn(0, map.width - 1)
+        val minY = (y - playerRadius).toInt().coerceIn(0, map.height - 1)
+        val maxY = (y + playerRadius).toInt().coerceIn(0, map.height - 1)
+
+        for (tx in minX..maxX) {
+            for (ty in minY..maxY) {
+                val tile = map.getTile(tx, ty)
+                if (!tile.isWalkable) {
+                    // Check if it's EMPTY and there is a walkable tile below on elevation layer z-1
+                    var isWalkableBelow = false
+                    if (tile == TileType.EMPTY && z > 0) {
+                        val mapBelow = gameLevels[z - 1]
+                        if (mapBelow != null) {
+                            val tileBelow = mapBelow.getTile(tx, ty)
+                            if (tileBelow.isWalkable) {
+                                isWalkableBelow = true
+                            }
+                        }
+                    }
+
+                    if (!isWalkableBelow) {
+                        // Circle-AABB collision check
+                        val closestX = x.coerceIn(tx.toFloat(), tx.toFloat() + 1f)
+                        val closestY = y.coerceIn(ty.toFloat(), ty.toFloat() + 1f)
+
+                        val distX = x - closestX
+                        val distY = y - closestY
+                        val distanceSquared = distX * distX + distY * distY
+
+                        if (distanceSquared < playerRadius * playerRadius) {
+                            return true // Collision!
+                        }
+                    }
+                }
+            }
+        }
+        return false
+    }
+
     fun movePlayer(dx: Float, dy: Float) {
         if (isGameOver || isGameWon || isHackingActive) return
 
@@ -717,21 +769,46 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
         val map = gameLevels[currentZLevel] ?: return
 
-        // Simple grid collision check
-        val tile = map.getTile(nextX.toInt(), nextY.toInt())
-        if (tile.isWalkable) {
+        var moved = false
+        // 1. Sliding collision: check combined X+Y first
+        if (!checkCollisionAt(nextX, nextY, currentZLevel)) {
             player.pos.x = nextX
             player.pos.y = nextY
+            moved = true
+        } else {
+            // Combined collides, try moving X axis only (sliding along walls)
+            if (!checkCollisionAt(nextX, player.pos.y, currentZLevel)) {
+                player.pos.x = nextX
+                moved = true
+            }
+            // Try moving Y axis only (sliding along walls)
+            else if (!checkCollisionAt(player.pos.x, nextY, currentZLevel)) {
+                player.pos.y = nextY
+                moved = true
+            }
+        }
 
-            // Special actions for triggers
-            if (tile == TileType.LASER_GRID) {
-                player.health = (player.health - 25f).coerceAtLeast(0f)
-                logToConsole("LASER TRIGGERED ALARM! -25HP")
-                // Sound sound waves instantly triggering alerts
-                triggerSoundRipple(player.pos, 12f)
-                if (player.health <= 0) {
-                    isGameOver = true
-                    stopGameLoop()
+        if (moved) {
+            val px = player.pos.x.toInt()
+            val py = player.pos.y.toInt()
+            val tile = map.getTile(px, py)
+
+            // 2. Elevation Layers: check if player walked off a ledge onto empty space
+            if (!tile.isWalkable && currentZLevel > 0) {
+                val mapBelow = gameLevels[currentZLevel - 1]
+                if (mapBelow != null) {
+                    val tileBelow = mapBelow.getTile(px, py)
+                    if (tileBelow.isWalkable) {
+                        currentZLevel--
+                        player.pos.z = currentZLevel.toFloat()
+                        player.health = (player.health - 15f).coerceAtLeast(0f)
+                        logToConsole("FALL DETECTED FROM ELEVATION LAYER! DAMAGE RECEIVED (-15HP)")
+                        triggerSoundRipple(player.pos, 8.5f) // Generates a loud sound ripple upon impact!
+                        if (player.health <= 0) {
+                            isGameOver = true
+                            stopGameLoop()
+                        }
+                    }
                 }
             }
 
