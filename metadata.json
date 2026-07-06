@@ -1,0 +1,6 @@
+{
+  "name": "NeonGrid RPG",
+  "description": "An isometric cyberpunk hack-and-slash RPG featuring tactical multi-level exploration, custom equipment loadouts, deep multi-class skill trees, and Commandos-style stealth mechanics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
