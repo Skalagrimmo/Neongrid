@@ -18,6 +18,10 @@ data class PlayerSaveState(
     val unlockedSkillIdsString: String = "ronin_base", // Comma-separated ids
     val highScore: Int = 0,
     val highestZLevelCleared: Int = 1,
+    val currentZLevel: Int = 1,
+    val playerPosX: Float = 2f,
+    val playerPosY: Float = 2f,
+    val exploredTilesString: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -33,7 +37,7 @@ interface PlayerSaveStateDao {
     suspend fun deleteSaveState()
 }
 
-@Database(entities = [PlayerSaveState::class], version = 1, exportSchema = false)
+@Database(entities = [PlayerSaveState::class], version = 2, exportSchema = false)
 abstract class GameDatabase : RoomDatabase() {
     abstract fun saveStateDao(): PlayerSaveStateDao
 

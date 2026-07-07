@@ -340,6 +340,21 @@
             const animationRef = useRef(null);
             const panOffset = { x: 0, y: -30 };
 
+            // Dynamic refs to avoid constant animation loop recreation
+            const mapDataRef = useRef(mapData);
+            const activeZRef = useRef(activeZ);
+            const viewModeRef = useRef(viewMode);
+            const hoverCellRef = useRef(hoverCell);
+            const droneRef = useRef(drone);
+            const brushHeightRef = useRef(brushHeight);
+
+            useEffect(() => { mapDataRef.current = mapData; }, [mapData]);
+            useEffect(() => { activeZRef.current = activeZ; }, [activeZ]);
+            useEffect(() => { viewModeRef.current = viewMode; }, [viewMode]);
+            useEffect(() => { hoverCellRef.current = hoverCell; }, [hoverCell]);
+            useEffect(() => { droneRef.current = drone; }, [drone]);
+            useEffect(() => { brushHeightRef.current = brushHeight; }, [brushHeight]);
+
             // Helper to log actions
             const addLog = (msg) => {
                 setLogs(prev => [msg, ...prev].slice(0, 8));
@@ -507,6 +522,58 @@
                 }
             };
 
+            const handleTouchStart = (e) => {
+                if (e.touches.length === 0) return;
+                e.preventDefault();
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                const touchX = e.touches[0].clientX - rect.left;
+                const touchY = e.touches[0].clientY - rect.top;
+
+                const grid = toGrid(touchX, touchY, canvas.width, canvas.height);
+                if (grid.x >= 0 && grid.x < GRID_SIZE && grid.y >= 0 && grid.y < GRID_SIZE) {
+                    setHoverCell(grid);
+                    setMapData(prev => {
+                        const next = [...prev];
+                        const currentCell = next[activeZ][grid.x][grid.y];
+                        
+                        let targetType = TileType.EMPTY;
+                        if (brush === 'ROAD') targetType = TileType.ROAD;
+                        else if (brush === 'WALL') targetType = TileType.WALL;
+                        else if (brush === 'LASER') targetType = TileType.LASER;
+                        else if (brush === 'BARREL') targetType = TileType.BARREL;
+                        else if (brush === 'TERMINAL') targetType = TileType.TERMINAL;
+
+                        if (currentCell.type === targetType && currentCell.height === brushHeight) {
+                            next[activeZ][grid.x][grid.y] = { type: TileType.EMPTY, height: 0 };
+                            addLog(`ERASED tile at (${grid.x}, ${grid.y}, Z=${activeZ})`);
+                        } else {
+                            next[activeZ][grid.x][grid.y] = { type: targetType, height: brushHeight };
+                            addLog(`PLACED ${brush} (H=${brushHeight}) at (${grid.x}, ${grid.y}, Z=${activeZ})`);
+                        }
+                        return next;
+                    });
+                }
+            };
+
+            const handleTouchMove = (e) => {
+                if (e.touches.length === 0) return;
+                e.preventDefault();
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                const touchX = e.touches[0].clientX - rect.left;
+                const touchY = e.touches[0].clientY - rect.top;
+
+                const grid = toGrid(touchX, touchY, canvas.width, canvas.height);
+                if (grid.x >= 0 && grid.x < GRID_SIZE && grid.y >= 0 && grid.y < GRID_SIZE) {
+                    setHoverCell(grid);
+                } else {
+                    setHoverCell({ x: -1, y: -1 });
+                }
+            };
+
             // Resize Canvas Hook
             useEffect(() => {
                 const handleResize = () => {
@@ -528,6 +595,14 @@
                     const ctx = canvas.getContext("2d");
                     const width = canvas.width;
                     const height = canvas.height;
+
+                    // Read from refs instead of state
+                    const currentMapData = mapDataRef.current;
+                    const currentActiveZ = activeZRef.current;
+                    const currentViewMode = viewModeRef.current;
+                    const currentHoverCell = hoverCellRef.current;
+                    const currentDrone = droneRef.current;
+                    const currentBrushHeight = brushHeightRef.current;
 
                     ctx.clearRect(0, 0, width, height);
 
@@ -558,23 +633,23 @@
                     // 2. Draw Multi-Layer Map blocks (with elevation height support)
                     for (let z = 0; z < 4; z++) {
                         // View mode isolation checks
-                        if (viewMode === 'ISOLATED' && z !== activeZ) continue;
+                        if (currentViewMode === 'ISOLATED' && z !== currentActiveZ) continue;
 
                         let alpha = 1.0;
-                        if (viewMode === 'ALL' && z !== activeZ) {
+                        if (currentViewMode === 'ALL' && z !== currentActiveZ) {
                             alpha = 0.22; // Translucent preview for non-active levels
                         }
 
                         for (let x = 0; x < GRID_SIZE; x++) {
                             for (let y = 0; y < GRID_SIZE; y++) {
-                                const cellObj = mapData[z][x][y];
+                                const cellObj = currentMapData[z][x][y];
                                 if (cellObj.type !== TileType.EMPTY) {
                                     drawElement(ctx, x, y, z, cellObj, alpha, width, height);
                                 }
 
                                 // Draw hovered cell outline overlay on active level (offset by target brush height for visual alignment)
-                                if (z === activeZ && x === hoverCell.x && y === hoverCell.y) {
-                                    const h = cellObj.type !== TileType.EMPTY ? cellObj.height : brushHeight;
+                                if (z === currentActiveZ && x === currentHoverCell.x && y === currentHoverCell.y) {
+                                    const h = cellObj.type !== TileType.EMPTY ? cellObj.height : currentBrushHeight;
                                     const pos = toIso(x, y, z, width, height);
                                     const elevatedY = pos.y - h * HEIGHT_UNIT;
                                     
@@ -597,8 +672,8 @@
                     }
 
                     // 3. Draw Player Drone
-                    if (viewMode !== 'ISOLATED' || Math.floor(drone.z) === activeZ) {
-                        const pos = toIso(drone.x, drone.y, drone.z, width, height);
+                    if (currentViewMode !== 'ISOLATED' || Math.floor(currentDrone.z) === currentActiveZ) {
+                        const pos = toIso(currentDrone.x, currentDrone.y, currentDrone.z, width, height);
                         const bounce = Math.sin(Date.now() / 180) * 4;
                         const dy = pos.y - 12 + bounce;
 
@@ -633,11 +708,11 @@
                         ctx.shadowBlur = 0;
                         ctx.fillStyle = "rgba(0,0,0,0.45)";
                         
-                        const cellX = Math.floor(drone.x);
-                        const cellY = Math.floor(drone.y);
-                        const currentTileObj = mapData[activeZ]?.[cellX]?.[cellY] || { type: TileType.EMPTY, height: 0 };
-                        const floorZ = activeZ + (currentTileObj.height * HEIGHT_UNIT) / Z_OFFSET;
-                        const floorPos = toIso(drone.x, drone.y, floorZ, width, height);
+                        const cellX = Math.floor(currentDrone.x);
+                        const cellY = Math.floor(currentDrone.y);
+                        const currentTileObj = currentMapData[currentActiveZ]?.[cellX]?.[cellY] || { type: TileType.EMPTY, height: 0 };
+                        const floorZ = currentActiveZ + (currentTileObj.height * HEIGHT_UNIT) / Z_OFFSET;
+                        const floorPos = toIso(currentDrone.x, currentDrone.y, floorZ, width, height);
                         
                         ctx.beginPath();
                         ctx.ellipse(floorPos.x, floorPos.y, 7, 3.5, 0, 0, Math.PI * 2);
@@ -651,7 +726,7 @@
 
                 animationRef.current = requestAnimationFrame(render);
                 return () => cancelAnimationFrame(animationRef.current);
-            }, [mapData, activeZ, viewMode, hoverCell, drone, brushHeight]);
+            }, []);
 
             // Sub-renderer for specific elevated isometric elements
             const drawElement = (ctx, x, y, z, cell, alpha, width, height) => {
@@ -665,7 +740,7 @@
                 ctx.globalAlpha = alpha;
 
                 // 1. Draw 3D Under-Structure Column/Walls if elevated (h > 0)
-                if (h > 0 && viewMode !== 'WIREFRAME') {
+                if (h > 0 && viewModeRef.current !== 'WIREFRAME') {
                     // Left Face
                     ctx.beginPath();
                     ctx.moveTo(pos.x - TILE_WIDTH / 2, pos.y);
@@ -691,7 +766,7 @@
                     ctx.stroke();
                 }
 
-                if (viewMode === 'WIREFRAME') {
+                if (viewModeRef.current === 'WIREFRAME') {
                     // Draw clean wireframe cage outline with elevation offset
                     ctx.strokeStyle = "#00ffcc";
                     ctx.lineWidth = 1;
@@ -962,6 +1037,9 @@
                                 ref={canvasRef}
                                 onMouseMove={handleMouseMove}
                                 onClick={handleCanvasClick}
+                                onTouchStart={handleTouchStart}
+                                onTouchMove={handleTouchMove}
+                                style={{ touchAction: 'none' }}
                             />
                         </div>
 

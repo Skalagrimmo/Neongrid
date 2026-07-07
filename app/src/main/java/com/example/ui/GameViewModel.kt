@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.GameDatabase
 import com.example.data.GameRepository
 import com.example.data.PlayerSaveState
+import com.example.data.GameStateSerializationService
 import com.example.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +38,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     // Active Game Entities & State
     var player by mutableStateOf(Player())
         private set
+
+    // Map of ZLevel -> Set of "x,y" coordinates that have been explored/revealed
+    var exploredTiles by mutableStateOf(mutableMapOf<Int, Set<String>>())
+        private set
+
+    private var lastExploredGridX = -1
+    private var lastExploredGridY = -1
+    private var lastExploredZ = -1
 
     var enemies = mutableListOf<Enemy>()
         private set
@@ -88,6 +97,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     // Game Loop Job
     private var gameLoopJob: Job? = null
 
+    // Track last move direction for attacks and skills
+    private var lastMoveX: Float = 1.0f
+    private var lastMoveY: Float = 0.0f
+
     init {
         generateLevels()
         resetGameEntities()
@@ -115,7 +128,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     val equippedCore = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedCoreId } ?: EquipmentItem.DEFAULT_CORE
                     val equippedSystem = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedSystemId } ?: EquipmentItem.DEFAULT_SYSTEM
 
+                    val totalHealthBoost = equippedWeapon.statBoostHealth + equippedCore.statBoostHealth + equippedSystem.statBoostHealth
+                    val totalEnergyBoost = equippedWeapon.statBoostEnergy + equippedCore.statBoostEnergy + equippedSystem.statBoostEnergy
+                    val loadedMaxHealth = 100f + totalHealthBoost
+                    val loadedMaxEnergy = 80f + totalEnergyBoost
+
+                    currentZLevel = it.currentZLevel
                     player = player.copy(
+                        pos = Point3D(it.playerPosX, it.playerPosY, it.currentZLevel.toFloat()),
                         level = it.level,
                         xp = it.xp,
                         skillPoints = it.skillPoints,
@@ -123,13 +143,20 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                         equippedWeapon = equippedWeapon,
                         equippedCore = equippedCore,
                         equippedSystem = equippedSystem,
-                        unlockedSkills = unlockedSet
+                        unlockedSkills = unlockedSet,
+                        maxHealth = loadedMaxHealth,
+                        maxEnergy = loadedMaxEnergy,
+                        health = loadedMaxHealth,
+                        energy = loadedMaxEnergy
                     )
 
                     // Mark skills as unlocked in the tree
                     skillNodes = skillNodes.map { node ->
                         node.copy(isUnlocked = unlockedSet.contains(node.id))
                     }
+
+                    exploredTiles = GameStateSerializationService.deserializeExploration(it.exploredTilesString).toMutableMap()
+                    updateExplorationAtPlayer(force = true)
 
                     logToConsole("SAVE STATE RESTORED: CLVL ${it.level}")
                 }
@@ -149,7 +176,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 equippedSystemId = player.equippedSystem.id,
                 unlockedSkillIdsString = player.unlockedSkills.joinToString(","),
                 highScore = max(currentScore, player.credits),
-                highestZLevelCleared = max(currentZLevel, 1)
+                highestZLevelCleared = max(currentZLevel, 1),
+                currentZLevel = currentZLevel,
+                playerPosX = player.pos.x,
+                playerPosY = player.pos.y,
+                exploredTilesString = GameStateSerializationService.serializeExploration(exploredTiles)
             )
             repository.saveGame(save)
             logToConsole("SYNCING WITH LOCAL SQLITE DB: DONE")
@@ -161,6 +192,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             repository.clearSave()
             player = Player()
             skillNodes = SkillNode.getSkillTree()
+            exploredTiles = mutableMapOf()
+            lastExploredGridX = -1
+            lastExploredGridY = -1
+            lastExploredZ = -1
             saveGameProgress()
             resetGameEntities()
             logToConsole("SQLITE DATABASE SAVES WIPED")
@@ -217,7 +252,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             )
         )
 
-        // Z=1 (Main Street) Enemies: Sentry guards patrolling in blocks
+        // Z=1 (Main Street) Enemies: Sentry guards patrolling street blocks and inside building foyers
         enemies.add(
             Enemy(
                 id = "sentry_0", name = "Guardsman SYNTROB_0",
@@ -229,27 +264,27 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             Enemy(
                 id = "sentry_1", name = "Guardsman SYNTROB_1",
                 pos = Point3D(5f, 14f, 1f), type = "Syntrob", health = 60f, maxHealth = 60f,
-                patrolRoute = listOf(Point3D(5f, 14f, 1f), Point3D(12f, 14f, 1f), Point3D(12f, 8f, 1f))
+                patrolRoute = listOf(Point3D(5f, 14f, 1f), Point3D(10f, 14f, 1f), Point3D(10f, 8f, 1f))
             )
         )
 
-        // Z=2 (Mezzanine) Enemies: Advanced sentries & watchers
+        // Z=2 (Mezzanine) Enemies: Advanced sentries guarding high platforms and balconies
         enemies.add(
             Enemy(
                 id = "sentry_2", name = "Commando SYNTROB_2",
-                pos = Point3D(4f, 8f, 2f), type = "Syntrob", health = 80f, maxHealth = 80f,
-                patrolRoute = listOf(Point3D(4f, 8f, 2f), Point3D(4f, 15f, 2f), Point3D(14f, 15f, 2f), Point3D(14f, 8f, 2f))
+                pos = Point3D(4f, 4f, 2f), type = "Syntrob", health = 80f, maxHealth = 80f,
+                patrolRoute = listOf(Point3D(4f, 4f, 2f), Point3D(6f, 4f, 2f), Point3D(6f, 6f, 2f), Point3D(4f, 6f, 2f))
             )
         )
         enemies.add(
             Enemy(
                 id = "sentry_3", name = "Elite WATCHER_3",
-                pos = Point3D(10f, 3f, 2f), type = "Sentry", health = 50f, maxHealth = 50f,
-                patrolRoute = listOf(Point3D(10f, 3f, 2f), Point3D(16f, 3f, 2f), Point3D(16f, 7f, 2f))
+                pos = Point3D(14f, 4f, 2f), type = "Sentry", health = 50f, maxHealth = 50f,
+                patrolRoute = listOf(Point3D(14f, 4f, 2f), Point3D(14f, 6f, 2f), Point3D(15f, 6f, 2f), Point3D(15f, 4f, 2f))
             )
         )
 
-        // Z=3 (Sky Gateway) Boss
+        // Z=3 (Sky Gateway) Boss: Rooftop heavy security mech
         enemies.add(
             Enemy(
                 id = "boss_heavy", name = "Mech SYNTROY_HEAVY",
@@ -263,112 +298,176 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         gameLevels.clear()
         val size = 20
 
-        // Z=0 Sewer Grid (Flooded pathways, columns, ladders to Z=1)
+        // Z=0 Sewer Grid (Flooded concrete pathways, water drainage channels, columns, ladders to Z=1)
         val sewerGrid = Array(size) { Array(size) { TileType.WALL } }
         for (x in 0 until size) {
             for (y in 0 until size) {
-                // Large grid paths
-                if (x == 2 || x == 5 || x == 12 || x == 14 || y == 4 || y == 8 || y == 12 || y == 15) {
+                // Generous concrete drainage pathways
+                if (x == 2 || x == 4 || x == 5 || x == 12 || x == 14 || x == 18 || y == 4 || y == 9 || y == 14 || y == 15) {
                     sewerGrid[x][y] = TileType.FLOOR
                 }
             }
         }
-        sewerGrid[5][4] = TileType.LADDER_UP // Ascent to Main
-        sewerGrid[12][12] = TileType.LADDER_UP
-        sewerGrid[14][15] = TileType.LADDER_UP
-        sewerGrid[3][4] = TileType.BARREL_EXPLOSIVE
-        sewerGrid[11][12] = TileType.BARREL_EXPLOSIVE
-        gameLevels[0] = GameLevelMap(0, "Z=0 SEWER", size, size, sewerGrid)
+        
+        // Aligned ladders to climb up into building interiors / streets of Z=1
+        sewerGrid[5][4] = TileType.LADDER_UP   // Rises into Biotech Lab
+        sewerGrid[2][14] = TileType.LADDER_UP  // Rises into Left Street pavement
+        sewerGrid[18][14] = TileType.LADDER_UP // Rises into Right Street pavement
 
-        // Z=1 Main Street Grid (Glowing roads, laser gates, terminals)
+        // Explosive storage barrels in sewer corners
+        sewerGrid[3][4] = TileType.BARREL_EXPLOSIVE
+        sewerGrid[11][14] = TileType.BARREL_EXPLOSIVE
+        sewerGrid[13][9] = TileType.BARREL_EXPLOSIVE
+        
+        gameLevels[0] = GameLevelMap(0, "Z=0 SEWER CANALS", size, size, sewerGrid)
+
+        // Z=1 Main Street Grid (Tactical street layout with three distinct secure buildings)
         val mainGrid = Array(size) { Array(size) { TileType.WALL } }
         for (x in 0 until size) {
             for (y in 0 until size) {
+                // Default walkable street pavement
                 if (x in 1..18 && y in 1..18) {
                     mainGrid[x][y] = TileType.FLOOR
                 }
-                // Roads in center
+                // Bright cyan-glowing roads running through city
                 if (x == 10 || y == 10) {
                     mainGrid[x][y] = TileType.GRID_ROAD
                 }
             }
         }
-        // Add obstacles and walls
-        for (i in 4..7) {
-            mainGrid[i][6] = TileType.WALL
-            mainGrid[13][i] = TileType.WALL
+
+        // --- BUILDING 1: Biotech Laboratory (Top-Left Sector) ---
+        for (x in 3..7) {
+            for (y in 3..7) {
+                if (x == 3 || x == 7 || y == 3 || y == 7) {
+                    mainGrid[x][y] = TileType.WALL
+                } else {
+                    mainGrid[x][y] = TileType.FLOOR // Lab Interior
+                }
+            }
         }
-        // Ladders down to Sewer and up to Mezzanine
-        mainGrid[5][4] = TileType.LADDER_DOWN
-        mainGrid[12][12] = TileType.LADDER_DOWN
-        mainGrid[14][15] = TileType.LADDER_DOWN
+        mainGrid[7][5] = TileType.LASER_GRID // Front secure door guarded by laser
+        mainGrid[8][5] = TileType.TERMINAL   // Console link to hack front door open
 
-        mainGrid[15][2] = TileType.LADDER_UP // Goes to Z=2
-        mainGrid[3][16] = TileType.LADDER_UP
+        // --- BUILDING 2: Security Headquarters (Top-Right Sector) ---
+        for (x in 12..16) {
+            for (y in 3..7) {
+                if (x == 12 || x == 16 || y == 3 || y == 7) {
+                    mainGrid[x][y] = TileType.WALL
+                } else {
+                    mainGrid[x][y] = TileType.FLOOR // HQ Interior
+                }
+            }
+        }
+        mainGrid[12][5] = TileType.LASER_GRID // Front entrance laser
+        mainGrid[11][5] = TileType.TERMINAL   // Terminal link to unlock HQ front door
 
-        // Laser grids & Terminals
-        mainGrid[10][6] = TileType.LASER_GRID
-        mainGrid[9][6] = TileType.TERMINAL // Hacking this disables the laser grid at 10,6
-        mainGrid[14][10] = TileType.LASER_GRID
-        mainGrid[14][9] = TileType.TERMINAL
+        // --- BUILDING 3: Power Grid Station (Bottom-Right Sector) ---
+        for (x in 12..16) {
+            for (y in 12..16) {
+                if (x == 12 || x == 16 || y == 12 || y == 16) {
+                    mainGrid[x][y] = TileType.WALL
+                } else {
+                    mainGrid[x][y] = TileType.FLOOR // Power Core room floor
+                }
+            }
+        }
+        mainGrid[12][14] = TileType.LASER_GRID // Entrance laser
+        mainGrid[11][14] = TileType.TERMINAL   // Core overload hacking node
 
+        // Ladders DOWN to Sewers (Z=0)
+        mainGrid[5][4] = TileType.LADDER_DOWN   // Descent from inside Biotech Lab
+        mainGrid[2][14] = TileType.LADDER_DOWN  // Descent from Left Pavement
+        mainGrid[18][14] = TileType.LADDER_DOWN // Descent from Right Pavement
+
+        // Ladders UP to Mezzanine (Z=2)
+        mainGrid[4][6] = TileType.LADDER_UP   // Climbing from inside Biotech Lab to upper mezzanine balcony
+        mainGrid[14][4] = TileType.LADDER_UP  // Climbing from inside HQ to high level security deck
+        mainGrid[14][14] = TileType.LADDER_UP // Climbing from Power Station to upper platform
+        mainGrid[9][9] = TileType.LADDER_UP   // Outdoor public street access ladder up to suspended steel catwalk bridge
+
+        // Ambient explosive barrels on the streets
         mainGrid[8][15] = TileType.BARREL_EXPLOSIVE
         mainGrid[15][15] = TileType.BARREL_EXPLOSIVE
 
         gameLevels[1] = GameLevelMap(1, "Z=1 MAIN STREET", size, size, mainGrid)
 
-        // Z=2 Mezzanine (High structures, bridges)
+        // Z=2 Mezzanine (Suspended balconies directly above Z=1 buildings connected by narrow catwalk steel skybridges)
         val mezGrid = Array(size) { Array(size) { TileType.WALL } }
         for (x in 0 until size) {
             for (y in 0 until size) {
-                // Multiple platforms with narrow bridges
-                if ((x in 2..7 && y in 2..8) || (x in 12..18 && y in 2..8) || (x in 2..18 && y in 12..18)) {
+                // Balcony platform above Biotech Lab (matching coordinates)
+                if (x in 3..7 && y in 3..7) {
                     mezGrid[x][y] = TileType.FLOOR
                 }
-                // Bridges
+                // Balcony platform above Security HQ
+                if (x in 12..16 && y in 3..7) {
+                    mezGrid[x][y] = TileType.FLOOR
+                }
+                // Platform deck above Power Grid Station
+                if (x in 12..16 && y in 12..16) {
+                    mezGrid[x][y] = TileType.FLOOR
+                }
+                // Catwalk skybridge crossing high above the main street from Biotech Balcony to Security Deck
                 if (y == 5 && x in 8..11) {
                     mezGrid[x][y] = TileType.GRID_ROAD
                 }
-                if (x == 5 && y in 9..11) {
-                    mezGrid[x][y] = TileType.GRID_ROAD
-                }
-                if (x == 15 && y in 9..11) {
+                // Connection bridge from catwalk to the street ladder landing
+                if (x == 9 && y in 6..9) {
                     mezGrid[x][y] = TileType.GRID_ROAD
                 }
             }
         }
-        // Ladders down
-        mezGrid[15][2] = TileType.LADDER_DOWN
-        mezGrid[3][16] = TileType.LADDER_DOWN
-        // Ladder up to Z=3 Roof
-        mezGrid[14][14] = TileType.LADDER_UP
+        
+        // Aligned descending ladders matching Z=1 up-ladders
+        mezGrid[4][6] = TileType.LADDER_DOWN   // Descent into Biotech Lab floor
+        mezGrid[14][4] = TileType.LADDER_DOWN  // Descent into Security HQ floor
+        mezGrid[14][14] = TileType.LADDER_DOWN // Descent into Power Station floor
+        mezGrid[9][9] = TileType.LADDER_DOWN   // Descent to the street pavement
 
+        // Ascending ladder going up from Biotech Balcony up to Rooftop (Z=3)
+        mezGrid[5][5] = TileType.LADDER_UP
+
+        // Laser grid security barrier blocking balcony passage
         mezGrid[6][12] = TileType.LASER_GRID
         mezGrid[5][12] = TileType.TERMINAL
+
         mezGrid[4][4] = TileType.BARREL_EXPLOSIVE
 
-        gameLevels[2] = GameLevelMap(2, "Z=2 MEZZANINE", size, size, mezGrid)
+        gameLevels[2] = GameLevelMap(2, "Z=2 MEZZANINE DECK", size, size, mezGrid)
 
-        // Z=3 Sky Gateway
+        // Z=3 Sky Gateway (High altitude helipad, satellite receiver dishes, skylights, and Boss arena)
         val skyGrid = Array(size) { Array(size) { TileType.WALL } }
         for (x in 0 until size) {
             for (y in 0 until size) {
+                // Large flat rooftop helipad area
                 if (x in 3..16 && y in 3..16) {
                     skyGrid[x][y] = TileType.FLOOR
                 }
+                // Glass skylights that look directly down to Z=2 mezzanine (non-walkable empty spaces)
+                if ((x in 5..6 && y in 3..4) || (x in 13..14 && y in 3..4)) {
+                    skyGrid[x][y] = TileType.EMPTY
+                }
             }
         }
-        skyGrid[14][14] = TileType.LADDER_DOWN
-        // Exit Uplink Receiver
+        // Ladder going down to Biotech Balcony at (5, 5)
+        skyGrid[5][5] = TileType.LADDER_DOWN
+
+        // Central goal: Uplink Receiver Exit Portal
         skyGrid[10][10] = TileType.EXIT_PORTAL
 
-        skyGrid[10][12] = TileType.LASER_GRID
-        skyGrid[9][12] = TileType.TERMINAL
+        // Defensive laser gates guarding exit portal
+        skyGrid[10][9] = TileType.LASER_GRID
+        skyGrid[10][11] = TileType.LASER_GRID
+
+        // Decryption terminals at opposite corners of roof to disable the laser fences
+        skyGrid[8][8] = TileType.TERMINAL
+        skyGrid[12][12] = TileType.TERMINAL
 
         skyGrid[13][5] = TileType.BARREL_EXPLOSIVE
         skyGrid[5][13] = TileType.BARREL_EXPLOSIVE
 
-        gameLevels[3] = GameLevelMap(3, "Z=3 SKY GATEWAY", size, size, skyGrid)
+        gameLevels[3] = GameLevelMap(3, "Z=3 SKY PORTAL APEX", size, size, skyGrid)
     }
 
     private fun startGameLoop() {
@@ -582,6 +681,15 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+
+        // 6. Regenerate Player Energy
+        if (player.energy < player.maxEnergy) {
+            val regenRate = 4.0f // 4 energy units per second base recovery
+            player.energy = (player.energy + regenRate * dt).coerceAtMost(player.maxEnergy)
+        }
+
+        // 7. Force a copy to update the Player state reference so Compose UI detects updates (energy, health, position) fluidly
+        player = player.copy()
     }
 
     private fun checkPlayerVisibility(enemy: Enemy, dist: Float): Boolean {
@@ -598,7 +706,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         var diff = abs(angleToPlayer - enemy.directionAngle)
         while (diff > PI) diff = (2 * PI - diff).toFloat()
 
-        return diff <= enemy.getVisionConeAngle() / 2f
+        if (diff > enemy.getVisionConeAngle() / 2f) return false
+
+        // Commandos stealth gameplay mechanics:
+        // Inner half (0% to 50% range): Player is always detected if inside the FOV.
+        // Outer half (50% to 100% range): Player is NOT detected if sneaking (crouching).
+        val isInnerZone = dist <= visionRange * 0.5f
+        if (!isInnerZone && player.isSneaking) {
+            return false
+        }
+
+        return true
     }
 
     private fun updateEnemyMovement(enemy: Enemy, dt: Float) {
@@ -763,6 +881,15 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     fun movePlayer(dx: Float, dy: Float) {
         if (isGameOver || isGameWon || isHackingActive) return
 
+        // Update direction vector
+        if (dx != 0f || dy != 0f) {
+            val d = sqrt(dx * dx + dy * dy)
+            if (d > 0.001f) {
+                lastMoveX = dx / d
+                lastMoveY = dy / d
+            }
+        }
+
         val speed = player.getSpeed()
         val nextX = player.pos.x + dx * speed
         val nextY = player.pos.y + dy * speed
@@ -819,6 +946,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     triggerSoundRipple(player.pos, soundRadius)
                 }
             }
+
+            updateExplorationAtPlayer()
         }
     }
 
@@ -848,14 +977,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
         // Ranged Weapons shoot orbs
         if (player.equippedWeapon.id == "plasma_carbine") {
-            // Fire projectile in direction player is looking/moving
-            val angle = player.getSpeed() // simple look dir approximation based on speed/last movement
-            val targetDirX = cos(0f) // default to right for now, or based on last joystick input
-            val targetDirY = sin(0f)
-
-            // Let's shoot in 4 directions based on joystick/movement, or closest enemy!
-            var dirX = 1f
-            var dirY = 0f
+            // Fire projectile in direction player is looking/moving, defaulting to last move vector
+            var dirX = lastMoveX
+            var dirY = lastMoveY
 
             val nearest = enemies.filter { !it.isDead && it.pos.z.toInt() == currentZLevel }.minByOrNull { it.pos.distanceTo(player.pos) }
             if (nearest != null) {
@@ -926,6 +1050,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 player.pos.z = currentZLevel.toFloat()
                 logToConsole("ASCENDING SHAFT TO LEVEL Z=$currentZLevel")
                 // Reposition player nicely on new level ladder
+                updateExplorationAtPlayer()
                 return
             }
         } else if (currentTile == TileType.LADDER_DOWN) {
@@ -933,6 +1058,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 currentZLevel--
                 player.pos.z = currentZLevel.toFloat()
                 logToConsole("DESCENDING SHAFT TO LEVEL Z=$currentZLevel")
+                updateExplorationAtPlayer()
                 return
             }
         }
@@ -993,25 +1119,36 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 player.energy -= cost
                 // Teleport forward 3 steps if walkable
                 val map = gameLevels[currentZLevel] ?: return
-                // simple dash direction calculation
-                val targetX = (player.pos.x + 3f).coerceIn(1f, 18f)
-                val targetY = player.pos.y
+                // Directional dash calculation using lastMoveX and lastMoveY
+                val oldX = player.pos.x
+                val oldY = player.pos.y
+                val targetX = (oldX + lastMoveX * 3.2f).coerceIn(1f, 18f)
+                val targetY = (oldY + lastMoveY * 3.2f).coerceIn(1f, 18f)
 
                 if (map.getTile(targetX.toInt(), targetY.toInt()).isWalkable) {
                     player.pos.x = targetX
+                    player.pos.y = targetY
                     logToConsole("KAZE DASH ACTIVATED: CRITICAL STRIKE LOADED")
-                    // Damage any enemies passed through
+                    
+                    // Damage any enemies passed through (midpoint and endpoint checks)
+                    val midX = (oldX + targetX) / 2f
+                    val midY = (oldY + targetY) / 2f
                     for (enemy in enemies) {
-                        if (!enemy.isDead && enemy.pos.z.toInt() == currentZLevel && enemy.pos.x in player.pos.x..targetX && abs(enemy.pos.y - targetY) < 1.0f) {
-                            val dmg = player.getDamage() * 2f
-                            enemy.health -= dmg
-                            enemy.alertState = AlertState.ALERTED
-                            logToConsole("DASHED THROUGH ${enemy.name}: -${dmg.toInt()}HP")
-                            if (enemy.health <= 0) {
-                                enemy.isDead = true
-                                player.xp += 30
-                                player.credits += 40
-                                checkPlayerLevelUp()
+                        if (!enemy.isDead && enemy.pos.z.toInt() == currentZLevel) {
+                            val d1 = enemy.pos.distanceTo(Point3D(oldX, oldY, currentZLevel.toFloat()))
+                            val d2 = enemy.pos.distanceTo(Point3D(midX, midY, currentZLevel.toFloat()))
+                            val d3 = enemy.pos.distanceTo(Point3D(targetX, targetY, currentZLevel.toFloat()))
+                            if (d1 < 1.6f || d2 < 1.6f || d3 < 1.6f) {
+                                val dmg = player.getDamage() * 2f
+                                enemy.health -= dmg
+                                enemy.alertState = AlertState.ALERTED
+                                logToConsole("DASHED THROUGH ${enemy.name}: -${dmg.toInt()}HP")
+                                if (enemy.health <= 0) {
+                                    enemy.isDead = true
+                                    player.xp += 30
+                                    player.credits += 40
+                                    checkPlayerLevelUp()
+                                }
                             }
                         }
                     }
@@ -1110,11 +1247,25 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     // Customize loadouts
     fun equipItem(item: EquipmentItem) {
-        player = when (item.type) {
+        var nextPlayer = when (item.type) {
             EquipmentType.WEAPON -> player.copy(equippedWeapon = item)
             EquipmentType.CORE -> player.copy(equippedCore = item)
             EquipmentType.SYSTEM -> player.copy(equippedSystem = item)
         }
+
+        // Recalculate max health and max energy based on all equipped gear
+        val totalHealthBoost = nextPlayer.equippedWeapon.statBoostHealth + nextPlayer.equippedCore.statBoostHealth + nextPlayer.equippedSystem.statBoostHealth
+        val totalEnergyBoost = nextPlayer.equippedWeapon.statBoostEnergy + nextPlayer.equippedCore.statBoostEnergy + nextPlayer.equippedSystem.statBoostEnergy
+
+        val newMaxHealth = 100f + totalHealthBoost
+        val newMaxEnergy = 80f + totalEnergyBoost
+
+        nextPlayer.maxHealth = newMaxHealth
+        nextPlayer.maxEnergy = newMaxEnergy
+        nextPlayer.health = nextPlayer.health.coerceAtMost(newMaxHealth)
+        nextPlayer.energy = nextPlayer.energy.coerceAtMost(newMaxEnergy)
+
+        player = nextPlayer
         logToConsole("LOADOUT UPDATED: EQUIPPED ${item.name}")
         saveGameProgress()
     }
@@ -1124,9 +1275,48 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             player.credits -= item.costCredits
             equipItem(item)
             logToConsole("PURCHASED ${item.name} FOR ${item.costCredits}C")
-            saveGameProgress()
+            // equipItem already does saveGameProgress() and updates state
         } else {
             logToConsole("INSUFFICIENT CREDITS")
+        }
+    }
+
+    fun updateExplorationAtPlayer(force: Boolean = false) {
+        val px = player.pos.x.toInt()
+        val py = player.pos.y.toInt()
+        val pz = currentZLevel
+
+        if (!force && px == lastExploredGridX && py == lastExploredGridY && pz == lastExploredZ) {
+            return
+        }
+
+        lastExploredGridX = px
+        lastExploredGridY = py
+        lastExploredZ = pz
+
+        val radius = 5
+        val currentSet = exploredTiles[pz]?.toMutableSet() ?: mutableSetOf()
+        var changed = false
+
+        for (dx in -radius..radius) {
+            for (dy in -radius..radius) {
+                if (dx * dx + dy * dy <= radius * radius) {
+                    val tx = px + dx
+                    val ty = py + dy
+                    if (tx in 0 until 20 && ty in 0 until 20) {
+                        if (currentSet.add("$tx,$ty")) {
+                            changed = true
+                        }
+                    }
+                }
+            }
+        }
+
+        if (changed) {
+            val updatedMap = exploredTiles.toMutableMap()
+            updatedMap[pz] = currentSet
+            exploredTiles = updatedMap
+            saveGameProgress()
         }
     }
 }

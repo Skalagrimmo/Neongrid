@@ -97,22 +97,56 @@ fun GameCanvas(
         withTransform({
             translate(viewportOffsetX, viewportOffsetY)
         }) {
-            // 1. Draw Grid Ground and Tiles
+            // 1a. Draw levels below with translucency to show sewers/lower floors and verticality
+            for (z in 0 until viewModel.currentZLevel) {
+                val belowMap = viewModel.gameLevels[z]
+                if (belowMap != null) {
+                    val depthDiff = viewModel.currentZLevel - z
+                    val subAlpha = when (depthDiff) {
+                        1 -> 0.35f
+                        2 -> 0.15f
+                        else -> 0.08f
+                    }
+                    val depthYOffset = depthDiff * zHeightOffset
+                    
+                    for (x in 0 until belowMap.width) {
+                        for (y in 0 until belowMap.height) {
+                            val tile = belowMap.getTile(x, y)
+                            if (tile != TileType.EMPTY) {
+                                val isoX = (x.toFloat() - y.toFloat()) * tileHalfWidth
+                                val isoY = (x.toFloat() + y.toFloat()) * tileHalfHeight - viewModel.currentZLevel.toFloat() * zHeightOffset + depthYOffset
+                                
+                                drawIsoTile(drawPath, isoX, isoY, tileHalfWidth, tileHalfHeight, tile, alpha = subAlpha)
+                                drawIsoStructures(drawPath, isoX, isoY, tileHalfWidth, tileHalfHeight, zHeightOffset, tile, alpha = subAlpha * 0.4f)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1b. Draw current active level fully opaque (except unexplored tiles which are in fog)
             val width = levelMap.width
             val height = levelMap.height
+            val activeExploredSet = viewModel.exploredTiles[viewModel.currentZLevel] ?: emptySet()
 
             for (x in 0 until width) {
                 for (y in 0 until height) {
                     val tile = levelMap.getTile(x, y)
-                    val isoPos = toIso(x.toFloat(), y.toFloat(), viewModel.currentZLevel.toFloat())
+                    val isoX = (x.toFloat() - y.toFloat()) * tileHalfWidth
+                    val isoY = (x.toFloat() + y.toFloat()) * tileHalfHeight - viewModel.currentZLevel.toFloat() * zHeightOffset
+
+                    val isExplored = activeExploredSet.contains("$x,$y")
 
                     // Draw floor/grid tile
                     if (tile != TileType.EMPTY) {
-                        drawIsoTile(drawPath, isoPos, tileHalfWidth, tileHalfHeight, tile)
+                        val alpha = if (isExplored) 1.0f else 0.12f
+                        drawIsoTile(drawPath, isoX, isoY, tileHalfWidth, tileHalfHeight, tile, alpha = alpha)
                     }
 
-                    // Draw special vertical structures (Walls, Lasers, Terminals, Barrels)
-                    drawIsoStructures(drawPath, isoPos, tileHalfWidth, tileHalfHeight, zHeightOffset, tile)
+                    // Draw special vertical structures (Walls, Lasers, Terminals, Barrels) only if explored
+                    if (isExplored) {
+                        drawIsoStructures(drawPath, isoX, isoY, tileHalfWidth, tileHalfHeight, zHeightOffset, tile)
+                    }
                 }
             }
 
@@ -130,10 +164,15 @@ fun GameCanvas(
                 }
             }
 
-            // 3. Draw Enemy Vision Cones (Rendered flat on floor beneath characters)
+            // 3. Draw Enemy Vision Cones (Rendered flat on floor beneath characters if enemy is visible)
             val playerIso = toIso(player.pos.x, player.pos.y, player.pos.z)
             for (enemy in enemies) {
                 if (enemy.isDead || enemy.pos.z.toInt() != viewModel.currentZLevel) continue
+
+                val ex = enemy.pos.x.toInt()
+                val ey = enemy.pos.y.toInt()
+                val isEnemyExplored = activeExploredSet.contains("$ex,$ey")
+                if (!isEnemyExplored) continue // Hide vision cones in fog of war!
 
                 val enemyIso = toIso(enemy.pos.x, enemy.pos.y, enemy.pos.z)
                 drawVisionCone(drawPath, enemyIso, enemy, player, playerIso, tileHalfWidth, tileHalfHeight)
@@ -151,9 +190,14 @@ fun GameCanvas(
                 }
             }
 
-            // 5. Draw Enemies (Characters)
+            // 5. Draw Enemies (Characters) only if in explored tiles
             for (enemy in enemies) {
                 if (enemy.isDead || enemy.pos.z.toInt() != viewModel.currentZLevel) continue
+
+                val ex = enemy.pos.x.toInt()
+                val ey = enemy.pos.y.toInt()
+                val isEnemyExplored = activeExploredSet.contains("$ex,$ey")
+                if (!isEnemyExplored) continue // Hide enemies in fog of war!
 
                 val enemyIso = toIso(enemy.pos.x, enemy.pos.y, enemy.pos.z)
                 drawEnemyCharacter(enemyIso, enemy, zHeightOffset)
@@ -250,22 +294,128 @@ fun GameCanvas(
             }
         }
     }
+
+    // 9. Cyberpunk Map Scale & Verticality HUD Overlay (Bottom-Left)
+    Box(
+        modifier = with(boxScope) {
+            Modifier.align(Alignment.BottomStart)
+        }
+            .padding(start = 16.dp, bottom = 16.dp)
+            .background(Color(0xE6070B0E), RoundedCornerShape(8.dp))
+            .border(1.dp, Color(0xFF13232C), RoundedCornerShape(8.dp))
+            .padding(12.dp)
+            .width(180.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "TACTICAL RADAR SCALE",
+                    color = Color(0xFF00FFCC),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(Color(0xFF00FFCC), RoundedCornerShape(3.dp))
+                )
+            }
+            
+            // Custom Separator Line
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0xFF13232C))
+            )
+            
+            // Scale Bar Visual representation
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                // Ruler tick marks line
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    // Left prong
+                    Box(modifier = Modifier.width(1.5.dp).height(6.dp).background(Color(0xFF00FFCC)))
+                    // Center horizontal line
+                    Box(modifier = Modifier.weight(1f).height(1.5.dp).background(Color(0xFF00FFCC).copy(alpha = 0.5f)))
+                    // Mid prong
+                    Box(modifier = Modifier.width(1.5.dp).height(4.dp).background(Color(0xFF00FFCC)))
+                    // Right-center horizontal line
+                    Box(modifier = Modifier.weight(1f).height(1.5.dp).background(Color(0xFF00FFCC).copy(alpha = 0.5f)))
+                    // Right prong
+                    Box(modifier = Modifier.width(1.5.dp).height(6.dp).background(Color(0xFF00FFCC)))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("0m", color = Color(0xFF5F7582), fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                    Text("15m", color = Color(0xFF5F7582), fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                    Text("30m", color = Color(0xFF5F7582), fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+            
+            // Floor Elevation details
+            val floorName = when(viewModel.currentZLevel) {
+                0 -> "Z=0 SEWER TUNNELS"
+                1 -> "Z=1 MAIN STREET"
+                2 -> "Z=2 MEZZANINE DECK"
+                3 -> "Z=3 SKY GATEWAY"
+                else -> "Z=N COGNITIVE GRID"
+            }
+            val heightEstimate = viewModel.currentZLevel * 5.5f
+            
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "LEVEL: $floorName",
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "ELEVATION: ${String.format("%.1f", heightEstimate)}m",
+                    color = Color(0xFFFF9900),
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "GRID RESOLUTION: 20x20m",
+                    color = Color(0xFF8899A6),
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
 }
 }
 
 // Function to draw isometric base tiles
 private fun DrawScope.drawIsoTile(
     path: Path,
-    isoPos: Offset,
+    isoPosX: Float,
+    isoPosY: Float,
     halfW: Float,
     halfH: Float,
-    tile: TileType
+    tile: TileType,
+    alpha: Float = 1.0f
 ) {
     path.reset()
-    path.moveTo(isoPos.x, isoPos.y - halfH)
-    path.lineTo(isoPos.x + halfW, isoPos.y)
-    path.lineTo(isoPos.x, isoPos.y + halfH)
-    path.lineTo(isoPos.x - halfW, isoPos.y)
+    path.moveTo(isoPosX, isoPosY - halfH)
+    path.lineTo(isoPosX + halfW, isoPosY)
+    path.lineTo(isoPosX, isoPosY + halfH)
+    path.lineTo(isoPosX - halfW, isoPosY)
     path.close()
 
     val tileColor = when (tile) {
@@ -273,13 +423,13 @@ private fun DrawScope.drawIsoTile(
         TileType.LADDER_UP, TileType.LADDER_DOWN -> Color(0xFF261D15) // Amber industrial shaft
         TileType.EXIT_PORTAL -> Color(0xFF142E20) // Glowing green portal floor
         else -> Color(0xFF11171C) // Carbon dark blocks
-    }
+    }.copy(alpha = alpha)
 
     val strokeColor = when (tile) {
         TileType.GRID_ROAD -> Color(0xFF00FFCC)
         TileType.EXIT_PORTAL -> Color(0xFF00FF66)
         else -> Color(0xFF1D272F) // Normal grid lines
-    }
+    }.copy(alpha = alpha)
 
     drawPath(path = path, color = tileColor)
     drawPath(path = path, color = strokeColor, style = Stroke(width = 1.5f))
@@ -287,9 +437,9 @@ private fun DrawScope.drawIsoTile(
     // If Grid Road, draw custom neon wire line patterns
     if (tile == TileType.GRID_ROAD) {
         drawLine(
-            color = Color(0xFF00F0FF),
-            start = Offset(isoPos.x - halfW * 0.5f, isoPos.y - halfH * 0.5f),
-            end = Offset(isoPos.x + halfW * 0.5f, isoPos.y + halfH * 0.5f),
+            color = Color(0xFF00F0FF).copy(alpha = alpha),
+            start = Offset(isoPosX - halfW * 0.5f, isoPosY - halfH * 0.5f),
+            end = Offset(isoPosX + halfW * 0.5f, isoPosY + halfH * 0.5f),
             strokeWidth = 2f
         )
     }
@@ -298,36 +448,38 @@ private fun DrawScope.drawIsoTile(
 // Function to draw vertical walls and other 3D elements in isometric space
 private fun DrawScope.drawIsoStructures(
     path: Path,
-    isoPos: Offset,
+    isoPosX: Float,
+    isoPosY: Float,
     halfW: Float,
     halfH: Float,
     zHeight: Float,
-    tile: TileType
+    tile: TileType,
+    alpha: Float = 1.0f
 ) {
     val wallHeight = 55f
 
     when (tile) {
         TileType.WALL -> {
             // Render 3D isometric box
-            val topCenter = Offset(isoPos.x, isoPos.y - wallHeight)
+            val topCenter = Offset(isoPosX, isoPosY - wallHeight)
 
             path.reset()
-            path.moveTo(isoPos.x - halfW, isoPos.y)
-            path.lineTo(isoPos.x, isoPos.y + halfH)
-            path.lineTo(isoPos.x, isoPos.y + halfH - wallHeight)
-            path.lineTo(isoPos.x - halfW, isoPos.y - wallHeight)
+            path.moveTo(isoPosX - halfW, isoPosY)
+            path.lineTo(isoPosX, isoPosY + halfH)
+            path.lineTo(isoPosX, isoPosY + halfH - wallHeight)
+            path.lineTo(isoPosX - halfW, isoPosY - wallHeight)
             path.close()
             // Draw left side (shadowed)
-            drawPath(path = path, color = Color(0xFF151B1F))
+            drawPath(path = path, color = Color(0xFF151B1F).copy(alpha = alpha))
 
             path.reset()
-            path.moveTo(isoPos.x, isoPos.y + halfH)
-            path.lineTo(isoPos.x + halfW, isoPos.y)
-            path.lineTo(isoPos.x + halfW, isoPos.y - wallHeight)
-            path.lineTo(isoPos.x, isoPos.y + halfH - wallHeight)
+            path.moveTo(isoPosX, isoPosY + halfH)
+            path.lineTo(isoPosX + halfW, isoPosY)
+            path.lineTo(isoPosX + halfW, isoPosY - wallHeight)
+            path.lineTo(isoPosX, isoPosY + halfH - wallHeight)
             path.close()
             // Draw right side (shaded)
-            drawPath(path = path, color = Color(0xFF1B2329))
+            drawPath(path = path, color = Color(0xFF1B2329).copy(alpha = alpha))
 
             path.reset()
             path.moveTo(topCenter.x, topCenter.y - halfH)
@@ -336,36 +488,36 @@ private fun DrawScope.drawIsoStructures(
             path.lineTo(topCenter.x - halfW, topCenter.y)
             path.close()
             // Draw top face
-            drawPath(path = path, color = Color(0xFF242E36))
+            drawPath(path = path, color = Color(0xFF242E36).copy(alpha = alpha))
             // Draw highlights
-            drawPath(path = path, color = Color(0xFF33424E), style = Stroke(width = 1.5f))
+            drawPath(path = path, color = Color(0xFF33424E).copy(alpha = alpha), style = Stroke(width = 1.5f))
         }
 
         TileType.BARREL_EXPLOSIVE -> {
             // Draw simple 3D cylindrical container
-            val cy = isoPos.y - 12f
+            val cy = isoPosY - 12f
             drawRect(
-                color = Color(0xFFFF3333),
-                topLeft = Offset(isoPos.x - 14f, cy - 25f),
+                color = Color(0xFFFF3333).copy(alpha = alpha),
+                topLeft = Offset(isoPosX - 14f, cy - 25f),
                 size = Size(28f, 32f)
             )
             // Glowing radioactive core ring
             drawRect(
-                color = Color(0xFFFFCC00),
-                topLeft = Offset(isoPos.x - 14f, cy - 14f),
+                color = Color(0xFFFFCC00).copy(alpha = alpha),
+                topLeft = Offset(isoPosX - 14f, cy - 14f),
                 size = Size(28f, 8f)
             )
             // Metal rim rings
-            drawLine(Color.DarkGray, Offset(isoPos.x - 14f, cy - 25f), Offset(isoPos.x + 14f, cy - 25f), strokeWidth = 3f)
-            drawLine(Color.DarkGray, Offset(isoPos.x - 14f, cy + 7f), Offset(isoPos.x + 14f, cy + 7f), strokeWidth = 3f)
+            drawLine(Color.DarkGray.copy(alpha = alpha), Offset(isoPosX - 14f, cy - 25f), Offset(isoPosX + 14f, cy - 25f), strokeWidth = 3f)
+            drawLine(Color.DarkGray.copy(alpha = alpha), Offset(isoPosX - 14f, cy + 7f), Offset(isoPosX + 14f, cy + 7f), strokeWidth = 3f)
         }
 
         TileType.TERMINAL -> {
             // Drawing holographic server console
-            val baseCenter = Offset(isoPos.x, isoPos.y - 10f)
+            val baseCenter = Offset(isoPosX, isoPosY - 10f)
             // Cyber pillar console pedestal
             drawRect(
-                color = Color(0xFF26333D),
+                color = Color(0xFF26333D).copy(alpha = alpha),
                 topLeft = Offset(baseCenter.x - 10f, baseCenter.y - 20f),
                 size = Size(20f, 30f)
             )
@@ -379,52 +531,52 @@ private fun DrawScope.drawIsoStructures(
             path.lineTo(baseCenter.x, hY + 14f)
             path.lineTo(baseCenter.x - 16f, hY)
             path.close()
-            drawPath(path, Color(0x3300FFCC))
-            drawPath(path, Color(0xFF00FFCC), style = Stroke(width = 2f))
+            drawPath(path, Color(0x3300FFCC).copy(alpha = alpha * 0.2f))
+            drawPath(path, Color(0xFF00FFCC).copy(alpha = alpha), style = Stroke(width = 2f))
         }
 
         TileType.LASER_GRID -> {
             // Draw metal gate posts on either side
-            drawLine(Color(0xFF2E3D48), Offset(isoPos.x - halfW, isoPos.y), Offset(isoPos.x - halfW, isoPos.y - 45f), strokeWidth = 6f)
-            drawLine(Color(0xFF2E3D48), Offset(isoPos.x + halfW, isoPos.y), Offset(isoPos.x + halfW, isoPos.y - 45f), strokeWidth = 6f)
+            drawLine(Color(0xFF2E3D48).copy(alpha = alpha), Offset(isoPosX - halfW, isoPosY), Offset(isoPosX - halfW, isoPosY - 45f), strokeWidth = 6f)
+            drawLine(Color(0xFF2E3D48).copy(alpha = alpha), Offset(isoPosX + halfW, isoPosY), Offset(isoPosX + halfW, isoPosY - 45f), strokeWidth = 6f)
 
             // Dynamic pulsing laser beams
             val beamAlpha = 0.5f + abs(sin(System.currentTimeMillis() / 100f) * 0.4f)
             drawLine(
-                color = Color(0xFFFF0055).copy(alpha = beamAlpha),
-                start = Offset(isoPos.x - halfW, isoPos.y - 15f),
-                end = Offset(isoPos.x + halfW, isoPos.y - 15f),
+                color = Color(0xFFFF0055).copy(alpha = beamAlpha * alpha),
+                start = Offset(isoPosX - halfW, isoPosY - 15f),
+                end = Offset(isoPosX + halfW, isoPosY - 15f),
                 strokeWidth = 3f
             )
             drawLine(
-                color = Color(0xFFFF0055).copy(alpha = beamAlpha),
-                start = Offset(isoPos.x - halfW, isoPos.y - 35f),
-                end = Offset(isoPos.x + halfW, isoPos.y - 35f),
+                color = Color(0xFFFF0055).copy(alpha = beamAlpha * alpha),
+                start = Offset(isoPosX - halfW, isoPosY - 35f),
+                end = Offset(isoPosX + halfW, isoPosY - 35f),
                 strokeWidth = 3f
             )
         }
 
         TileType.LADDER_UP -> {
             // Vertical ladder scaffold ascending out of level
-            val topY = isoPos.y - 65f
-            drawLine(Color(0xFFE65C00), Offset(isoPos.x - 8f, isoPos.y + 10f), Offset(isoPos.x - 8f, topY), strokeWidth = 3f)
-            drawLine(Color(0xFFE65C00), Offset(isoPos.x + 8f, isoPos.y + 10f), Offset(isoPos.x + 8f, topY), strokeWidth = 3f)
+            val topY = isoPosY - 65f
+            drawLine(Color(0xFFE65C00).copy(alpha = alpha), Offset(isoPosX - 8f, isoPosY + 10f), Offset(isoPosX - 8f, topY), strokeWidth = 3f)
+            drawLine(Color(0xFFE65C00).copy(alpha = alpha), Offset(isoPosX + 8f, isoPosY + 10f), Offset(isoPosX + 8f, topY), strokeWidth = 3f)
             // Rungs
-            for (stepY in isoPos.y.toInt() + 10 downTo topY.toInt() step 12) {
-                drawLine(Color(0xFFFF9933), Offset(isoPos.x - 8f, stepY.toFloat()), Offset(isoPos.x + 8f, stepY.toFloat()), strokeWidth = 2.5f)
+            for (stepY in isoPosY.toInt() + 10 downTo topY.toInt() step 12) {
+                drawLine(Color(0xFFFF9933).copy(alpha = alpha), Offset(isoPosX - 8f, stepY.toFloat()), Offset(isoPosX + 8f, stepY.toFloat()), strokeWidth = 2.5f)
             }
         }
 
         TileType.LADDER_DOWN -> {
             // Drawing floor trapdoor grate
             path.reset()
-            path.moveTo(isoPos.x, isoPos.y - halfH * 0.6f)
-            path.lineTo(isoPos.x + halfW * 0.6f, isoPos.y)
-            path.lineTo(isoPos.x, isoPos.y + halfH * 0.6f)
-            path.lineTo(isoPos.x - halfW * 0.6f, isoPos.y)
+            path.moveTo(isoPosX, isoPosY - halfH * 0.6f)
+            path.lineTo(isoPosX + halfW * 0.6f, isoPosY)
+            path.lineTo(isoPosX, isoPosY + halfH * 0.6f)
+            path.lineTo(isoPosX - halfW * 0.6f, isoPosY)
             path.close()
-            drawPath(path, Color(0xFFB34700), style = Stroke(width = 3f))
-            drawLine(Color(0xFFB34700), Offset(isoPos.x - 6f, isoPos.y), Offset(isoPos.x + 6f, isoPos.y), strokeWidth = 3f)
+            drawPath(path, Color(0xFFB34700).copy(alpha = alpha), style = Stroke(width = 3f))
+            drawLine(Color(0xFFB34700).copy(alpha = alpha), Offset(isoPosX - 6f, isoPosY), Offset(isoPosX + 6f, isoPosY), strokeWidth = 3f)
         }
 
         else -> {}
@@ -443,13 +595,21 @@ private fun DrawScope.drawVisionCone(
 ) {
     val isTracking = isPlayerInVision(enemy, player)
     
-    val baseColor = when (enemy.alertState) {
-        AlertState.PATROLLING -> Color(0x2200FF66)  // Translucent green
-        AlertState.SUSPICIOUS -> Color(0x33FFCC00) // Translucent yellow
-        AlertState.ALERTED -> Color(0x44FF0055)     // Translucent red
+    // Commandos stealth mechanics: dynamic color shift based on alert level
+    val detectionFactor = (enemy.alertMeter / 100f).coerceIn(0f, 1f)
+    val baseColor = if (enemy.alertState == AlertState.ALERTED) {
+        Color(0xFFFF0055) // pure danger red
+    } else {
+        // Smoothly interpolate from stealth green (0% alert) to suspicious orange-yellow (100% alert)
+        // Green: 0xFF00FF66 (R=0, G=255, B=102)
+        // Amber/Orange: 0xFFFF9900 (R=255, G=153, B=0)
+        val r = (0 + (255 - 0) * detectionFactor).toInt()
+        val g = (255 + (153 - 255) * detectionFactor).toInt()
+        val b = (102 + (0 - 102) * detectionFactor).toInt()
+        Color(r, g, b)
     }
     
-    val coneColor = if (isTracking) Color(0x55FF0033) else baseColor
+    val coneColorBase = if (isTracking) Color(0xFFFF0055) else baseColor
 
     val rangePixels = enemy.getVisionRange() * halfW * 1.5f
     val fov = enemy.getVisionConeAngle()
@@ -459,34 +619,7 @@ private fun DrawScope.drawVisionCone(
     val endAngle = baseAngle + fov / 2f
     val samples = 12
 
-    // 1. Draw Concentric radar grids inside the cone (33%, 66%, 100%)
-    for (pct in listOf(0.33f, 0.66f, 1.0f)) {
-        val currRange = rangePixels * pct
-        path.reset()
-        for (i in 0..samples) {
-            val ratio = i.toFloat() / samples
-            val angle = startAngle + (endAngle - startAngle) * ratio
-            val dx = cos(angle) * currRange
-            val dy = sin(angle) * currRange
-            val pIsoX = origin.x + (dx - dy) * 0.5f
-            val pIsoY = origin.y + (dx + dy) * 0.25f
-            if (i == 0) path.moveTo(pIsoX, pIsoY) else path.lineTo(pIsoX, pIsoY)
-        }
-        
-        val strokeColor = if (isTracking) Color(0xFFFF3355) else coneColor.copy(alpha = 0.8f)
-        val strokeW = if (pct == 1.0f) (if (isTracking) 2.5f else 1.5f) else 1.0f
-        
-        drawPath(
-            path = path,
-            color = strokeColor.copy(alpha = if (pct == 1.0f) 0.8f else 0.25f),
-            style = Stroke(
-                width = strokeW,
-                pathEffect = if (pct < 1.0f) PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f) else null
-            )
-        )
-    }
-
-    // 2. Draw Solid fill of the complete cone
+    // 1. Draw Outer Zone Fill (50% to 100% range, very translucent)
     path.reset()
     path.moveTo(origin.x, origin.y)
     for (i in 0..samples) {
@@ -499,9 +632,86 @@ private fun DrawScope.drawVisionCone(
         path.lineTo(pIsoX, pIsoY)
     }
     path.close()
-    drawPath(path = path, color = coneColor)
+    drawPath(path = path, color = coneColorBase.copy(alpha = 0.05f))
 
-    // 3. Draw high-tension red threat laser line when player is target locked
+    // 2. Draw Inner Zone Fill (0% to 50% range, more solid)
+    path.reset()
+    path.moveTo(origin.x, origin.y)
+    for (i in 0..samples) {
+        val ratio = i.toFloat() / samples
+        val angle = startAngle + (endAngle - startAngle) * ratio
+        val dx = cos(angle) * rangePixels * 0.5f
+        val dy = sin(angle) * rangePixels * 0.5f
+        val pIsoX = origin.x + (dx - dy) * 0.5f
+        val pIsoY = origin.y + (dx + dy) * 0.25f
+        path.lineTo(pIsoX, pIsoY)
+    }
+    path.close()
+    drawPath(path = path, color = coneColorBase.copy(alpha = 0.16f))
+
+    // 3. Draw Radial spokes in the outer zone (striped/patterned effect where crawling is safe)
+    val spokesCount = 8
+    for (i in 0..spokesCount) {
+        val ratio = i.toFloat() / spokesCount
+        val angle = startAngle + (endAngle - startAngle) * ratio
+        val dx = cos(angle)
+        val dy = sin(angle)
+        
+        // Start of spoke (at 50% range)
+        val p1X = origin.x + (dx * rangePixels * 0.5f - dy * rangePixels * 0.5f) * 0.5f
+        val p1Y = origin.y + (dx * rangePixels * 0.5f + dy * rangePixels * 0.5f) * 0.25f
+        
+        // End of spoke (at 100% range)
+        val p2X = origin.x + (dx * rangePixels - dy * rangePixels) * 0.5f
+        val p2Y = origin.y + (dx * rangePixels + dy * rangePixels) * 0.25f
+        
+        drawLine(
+            color = coneColorBase.copy(alpha = 0.25f),
+            start = Offset(p1X, p1Y),
+            end = Offset(p2X, p2Y),
+            strokeWidth = 1.2f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+        )
+    }
+
+    // 4. Draw 50% Crawl-Safe Boundary Arc (Bold warning dashed separator)
+    path.reset()
+    for (i in 0..samples) {
+        val ratio = i.toFloat() / samples
+        val angle = startAngle + (endAngle - startAngle) * ratio
+        val dx = cos(angle) * rangePixels * 0.5f
+        val dy = sin(angle) * rangePixels * 0.5f
+        val pIsoX = origin.x + (dx - dy) * 0.5f
+        val pIsoY = origin.y + (dx + dy) * 0.25f
+        if (i == 0) path.moveTo(pIsoX, pIsoY) else path.lineTo(pIsoX, pIsoY)
+    }
+    drawPath(
+        path = path,
+        color = coneColorBase.copy(alpha = 0.65f),
+        style = Stroke(
+            width = 2.0f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
+        )
+    )
+
+    // 5. Draw 100% Outer Vision Arc
+    path.reset()
+    for (i in 0..samples) {
+        val ratio = i.toFloat() / samples
+        val angle = startAngle + (endAngle - startAngle) * ratio
+        val dx = cos(angle) * rangePixels
+        val dy = sin(angle) * rangePixels
+        val pIsoX = origin.x + (dx - dy) * 0.5f
+        val pIsoY = origin.y + (dx + dy) * 0.25f
+        if (i == 0) path.moveTo(pIsoX, pIsoY) else path.lineTo(pIsoX, pIsoY)
+    }
+    drawPath(
+        path = path,
+        color = coneColorBase.copy(alpha = 0.4f),
+        style = Stroke(width = 1.0f)
+    )
+
+    // 6. Draw high-tension red threat laser line when player is target locked
     if (isTracking) {
         val headCenterY = origin.y - 32f
         val playerCenterY = playerIso.y - 18f
@@ -588,6 +798,86 @@ private fun DrawScope.drawEnemyCharacter(
         topLeft = Offset(headCenter.x - barW / 2f, headCenter.y - 12f),
         size = Size(barW * hpPct, barH)
     )
+
+    // Commandos-style Stealth HUD Alert Indicators above head
+    if (!enemy.isDead) {
+        val indicatorX = headCenter.x
+        val indicatorY = headCenter.y - 18f
+        
+        when (enemy.alertState) {
+            AlertState.ALERTED -> {
+                // Glow circle
+                drawCircle(
+                    color = Color(0x33FF0055),
+                    radius = 12f + sin(System.currentTimeMillis() / 80f) * 3f,
+                    center = Offset(indicatorX, indicatorY - 8f)
+                )
+                // Red Exclamation Mark '!'
+                drawRect(
+                    color = Color(0xFFFF0055),
+                    topLeft = Offset(indicatorX - 2.5f, indicatorY - 14f),
+                    size = Size(5f, 9f)
+                )
+                drawCircle(
+                    color = Color(0xFFFF0055),
+                    radius = 2.5f,
+                    center = Offset(indicatorX, indicatorY - 2f)
+                )
+            }
+            AlertState.SUSPICIOUS -> {
+                // Amber Warning Triangle with '?' style center
+                val triPath = Path()
+                triPath.moveTo(indicatorX, indicatorY - 16f)
+                triPath.lineTo(indicatorX + 11f, indicatorY)
+                triPath.lineTo(indicatorX - 11f, indicatorY)
+                triPath.close()
+                drawPath(path = triPath, color = Color(0xFFFFCC00))
+                
+                // Black central mark inside triangle
+                drawRect(
+                    color = Color.Black,
+                    topLeft = Offset(indicatorX - 1.5f, indicatorY - 12f),
+                    size = Size(3f, 5f)
+                )
+                drawCircle(
+                    color = Color.Black,
+                    radius = 1.5f,
+                    center = Offset(indicatorX, indicatorY - 3f)
+                )
+            }
+            AlertState.PATROLLING -> {
+                if (enemy.alertMeter > 0f) {
+                    // Modern horizontal detection meter progress bar
+                    val meterW = 28f
+                    val meterH = 5f
+                    val meterX = headCenter.x - meterW / 2f
+                    val meterY = headCenter.y - 22f
+                    
+                    // Bezel background
+                    drawRect(
+                        color = Color(0x99000000),
+                        topLeft = Offset(meterX, meterY),
+                        size = Size(meterW, meterH)
+                    )
+                    // Border outline
+                    drawRect(
+                        color = Color(0x33FFFFFF),
+                        topLeft = Offset(meterX, meterY),
+                        size = Size(meterW, meterH),
+                        style = Stroke(width = 1f)
+                    )
+                    // Interpolated fill color based on progress (Teal -> Yellow -> Orange)
+                    val progress = (enemy.alertMeter / 100f).coerceIn(0f, 1f)
+                    val meterColor = if (progress > 0.6f) Color(0xFFFF9900) else Color(0xFFFFE500)
+                    drawRect(
+                        color = meterColor,
+                        topLeft = Offset(meterX, meterY),
+                        size = Size(meterW * progress, meterH)
+                    )
+                }
+            }
+        }
+    }
 }
 
 // Draw Player Character
@@ -753,7 +1043,17 @@ private fun isPlayerInVision(enemy: Enemy, player: Player): Boolean {
     var diff = abs(angleToPlayer - enemy.directionAngle)
     while (diff > PI) diff = (2 * PI - diff).toFloat()
 
-    return diff <= enemy.getVisionConeAngle() / 2f
+    if (diff > enemy.getVisionConeAngle() / 2f) return false
+
+    // Commandos stealth gameplay mechanics:
+    // Inner half: always visible.
+    // Outer half: hidden if sneaking.
+    val isInnerZone = dist <= visionRange * 0.5f
+    if (!isInnerZone && player.isSneaking) {
+        return false
+    }
+
+    return true
 }
 
 private fun DrawScope.drawPlayerStealthRadius(
