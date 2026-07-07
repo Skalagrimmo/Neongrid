@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Level Isometric Grid Canvas</title>
+    <title>Multi-Level Isometric Grid Engine (React)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -12,7 +12,7 @@
             padding: 0;
         }
         body {
-            background-color: #0d1117;
+            background-color: #07090e;
             color: #c9d1d9;
             font-family: 'Courier New', Courier, monospace;
             display: flex;
@@ -21,8 +21,14 @@
             height: 100vh;
             overflow: hidden;
         }
-        header {
-            background: rgba(22, 27, 34, 0.95);
+        #root {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+        }
+        .cyber-header {
+            background: rgba(13, 17, 24, 0.95);
             border-bottom: 2px solid #00ffcc;
             padding: 10px 16px;
             display: flex;
@@ -30,22 +36,30 @@
             align-items: center;
             box-shadow: 0 4px 20px rgba(0, 255, 204, 0.15);
         }
-        h1 {
-            font-size: 14px;
+        .cyber-title {
+            font-size: 13px;
             color: #00ffcc;
             text-transform: uppercase;
             letter-spacing: 2px;
-            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.4);
+            font-weight: bold;
         }
-        .stats {
-            font-size: 11px;
+        .cyber-subtitle {
+            font-size: 9px;
             color: #8b949e;
+            margin-top: 2px;
         }
         .main-container {
             display: flex;
             flex: 1;
             position: relative;
-            background: radial-gradient(circle at center, #151b22 0%, #0d1117 100%);
+            background: radial-gradient(circle at center, #111622 0%, #07090e 100%);
+            overflow: hidden;
+        }
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            height: 100%;
         }
         canvas {
             display: block;
@@ -58,14 +72,14 @@
             bottom: 12px;
             left: 12px;
             right: 12px;
-            background: rgba(22, 27, 34, 0.9);
-            border: 1px solid rgba(0, 255, 204, 0.3);
+            background: rgba(10, 14, 22, 0.93);
+            border: 1px solid rgba(0, 255, 204, 0.25);
             border-radius: 8px;
             padding: 12px;
             display: flex;
             flex-direction: column;
             gap: 10px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
             backdrop-filter: blur(8px);
             z-index: 10;
         }
@@ -76,71 +90,99 @@
             flex-wrap: wrap;
         }
         .control-label {
-            font-size: 11px;
+            font-size: 10px;
             color: #8b949e;
             text-transform: uppercase;
             font-weight: bold;
             min-width: 80px;
+            letter-spacing: 1px;
         }
         .btn {
-            background: #1f242c;
-            border: 1px solid rgba(0, 255, 204, 0.4);
+            background: #121824;
+            border: 1px solid rgba(0, 255, 204, 0.3);
             color: #c9d1d9;
-            padding: 6px 12px;
-            font-size: 11px;
+            padding: 5px 10px;
+            font-size: 10px;
             border-radius: 4px;
             cursor: pointer;
             transition: all 0.2s ease;
             text-transform: uppercase;
+            font-family: inherit;
         }
         .btn:hover {
             background: #00ffcc;
             color: #0d1117;
             box-shadow: 0 0 8px rgba(0, 255, 204, 0.4);
+            border-color: #00ffcc;
         }
         .btn.active {
             background: #00ffcc;
-            color: #0d1117;
+            color: #07090e;
             border-color: #00ffcc;
             font-weight: bold;
+            box-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
         }
         .btn-danger {
             border-color: rgba(255, 51, 102, 0.4);
+            color: #ff3366;
         }
         .btn-danger:hover {
             background: #ff3366;
             color: #ffffff;
+            border-color: #ff3366;
             box-shadow: 0 0 8px rgba(255, 51, 102, 0.4);
         }
-        .tool-indicator {
+        .btn-action {
+            background: #1f2a3d;
+            border: 1px solid rgba(189, 147, 249, 0.4);
+            color: #bd93f9;
+        }
+        .btn-action:hover {
+            background: #bd93f9;
+            color: #07090e;
+            border-color: #bd93f9;
+            box-shadow: 0 0 8px rgba(189, 147, 249, 0.4);
+        }
+        .indicator-box {
             position: absolute;
             top: 12px;
             right: 12px;
-            background: rgba(22, 27, 34, 0.85);
-            border: 1px solid #ff3366;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 10px;
-            color: #ff3366;
-            z-index: 5;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .legend {
-            position: absolute;
-            top: 12px;
-            left: 12px;
-            background: rgba(22, 27, 34, 0.85);
+            background: rgba(10, 14, 22, 0.9);
             border: 1px solid rgba(0, 255, 204, 0.2);
             border-radius: 6px;
             padding: 8px 12px;
             font-size: 10px;
+            color: #00ffcc;
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .legend-box {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: rgba(10, 14, 22, 0.9);
+            border: 1px solid rgba(189, 147, 249, 0.2);
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 9px;
             color: #8b949e;
             z-index: 5;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 5px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .legend-title {
+            color: #bd93f9;
+            font-weight: bold;
+            margin-bottom: 2px;
+            border-bottom: 1px solid rgba(189,147,249,0.2);
+            padding-bottom: 2px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         .legend-item {
             display: flex;
@@ -148,728 +190,871 @@
             gap: 8px;
         }
         .legend-color {
-            width: 12px;
-            height: 12px;
+            width: 10px;
+            height: 10px;
             border-radius: 2px;
-            border: 1px solid rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.15);
         }
         .dpad {
             display: grid;
-            grid-template-columns: repeat(3, 30px);
-            grid-template-rows: repeat(3, 30px);
+            grid-template-columns: repeat(3, 26px);
+            grid-template-rows: repeat(3, 26px);
             gap: 4px;
-            align-self: flex-end;
         }
         .dpad-btn {
-            background: #1f242c;
+            background: #121824;
             border: 1px solid rgba(0, 255, 204, 0.3);
             border-radius: 4px;
             color: #00ffcc;
-            font-size: 14px;
+            font-size: 11px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
+            font-family: inherit;
         }
         .dpad-btn:active {
             background: #00ffcc;
-            color: #0d1117;
+            color: #07090e;
         }
         .dpad-empty {
             visibility: hidden;
+        }
+        .logs-panel {
+            position: absolute;
+            top: 180px;
+            left: 12px;
+            background: rgba(10, 14, 22, 0.85);
+            border: 1px solid rgba(0, 255, 204, 0.1);
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 8px;
+            color: #00ffcc;
+            width: 180px;
+            max-height: 120px;
+            overflow-y: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            z-index: 5;
+        }
+        .log-line {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            opacity: 0.8;
         }
         .flex-spacer {
             flex-grow: 1;
         }
     </style>
+    <!-- React & Babel CDNs -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
 </head>
 <body>
-    <header>
-        <div>
-            <h1>ISO-GRID-V1 // HTML5 CANVAS ENGINE</h1>
-            <div class="stats" id="info-bar">GRID: 8x8 // Z-LAYERS: 4 // ACTIVE LAYER: Z=1</div>
-        </div>
-        <button class="btn" onclick="randomizeGrid()">AUTO-GEN MAP</button>
-    </header>
+    <div id="root"></div>
 
-    <div class="main-container">
-        <!-- Legend Overlay -->
-        <div class="legend">
-            <div style="color: #00ffcc; font-weight: bold; margin-bottom: 2px; border-bottom: 1px solid rgba(0,255,204,0.1); padding-bottom: 2px;">GRID CODES</div>
-            <div class="legend-item"><div class="legend-color" style="background: #112222;"></div> Z=0 SEWER ROAD</div>
-            <div class="legend-item"><div class="legend-color" style="background: #1a1f29;"></div> Z=1 HIGHWAY GRID</div>
-            <div class="legend-item"><div class="legend-color" style="background: #2a1f2d;"></div> Z=2 MEZZ PLATFORM</div>
-            <div class="legend-item"><div class="legend-color" style="background: #10ffcc;"></div> TERMINAL</div>
-            <div class="legend-item"><div class="legend-color" style="background: #ff3366;"></div> PLASMA CORE (HURTS)</div>
-            <div class="legend-item"><div class="legend-color" style="background: #ff9900;"></div> BARREL</div>
-            <div class="legend-item"><div class="legend-color" style="background: #334455;"></div> STRUCTURAL WALL</div>
-        </div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
 
-        <!-- Tool & Cursor Info Indicator -->
-        <div class="tool-indicator" id="cursor-indicator">
-            <div>CURSOR: OUT OF GRID</div>
-            <div>LAYER: Z=1 (MAIN)</div>
-            <div>SELECTION: BLOCK_ADD</div>
-        </div>
+        // Constants
+        const TILE_WIDTH = 64;
+        const TILE_HEIGHT = 32;
+        const Z_OFFSET = 26;
+        const GRID_SIZE = 8;
+        const HEIGHT_UNIT = 14; // pixels per elevation height step
 
-        <canvas id="isoCanvas"></canvas>
-
-        <!-- Controls UI panel overlay -->
-        <div class="control-panel">
-            <div class="control-row">
-                <span class="control-label">LAYERS</span>
-                <button class="btn" id="lay-all" onclick="setViewMode('ALL')">ALL (TRANSLUCENT)</button>
-                <button class="btn active" id="lay-iso" onclick="setViewMode('ISOLATED')">CURRENT LAYER ONLY</button>
-                <button class="btn" id="lay-wire" onclick="setViewMode('WIREFRAME')">WIREFRAME MODE</button>
-            </div>
-            <div class="control-row">
-                <span class="control-label">Z-LEVEL</span>
-                <button class="btn" id="z-0" onclick="setZLevel(0)">Z0 (SEWER)</button>
-                <button class="btn active" id="z-1" onclick="setZLevel(1)">Z1 (MAIN STREET)</button>
-                <button class="btn" id="z-2" onclick="setZLevel(2)">Z2 (MEZZANINE)</button>
-                <button class="btn" id="z-3" onclick="setZLevel(3)">Z3 (ROOFTOP)</button>
-            </div>
-            <div class="control-row">
-                <span class="control-label">BRUSH</span>
-                <button class="btn active" id="b-road" onclick="setBrush('ROAD')">ROAD TILE</button>
-                <button class="btn" id="b-wall" onclick="setBrush('WALL')">WALL BLOCK</button>
-                <button class="btn" id="b-laser" onclick="setBrush('LASER')">LASER CORE</button>
-                <button class="btn" id="b-barrel" onclick="setBrush('BARREL')">BARREL</button>
-                <button class="btn" id="b-term" onclick="setBrush('TERMINAL')">TERMINAL</button>
-                <button class="btn btn-danger" onclick="clearActiveLayer()">CLEAR LEVEL</button>
-
-                <div class="flex-spacer"></div>
-
-                <!-- D-Pad for Touch/Emulator navigation support -->
-                <span class="control-label" style="min-width: unset;">DRONE CONTROLS</span>
-                <div class="dpad">
-                    <button class="dpad-btn" onclick="moveDrone(0, -1)">▲</button>
-                    <button class="dpad-btn dpad-empty"></button>
-                    <button class="dpad-btn" onclick="moveDrone(-1, 0)">◀</button>
-                    <button class="dpad-btn dpad-empty"></button>
-                    <button class="dpad-btn" onclick="moveDrone(1, 0)">▶</button>
-                    <button class="dpad-btn dpad-empty"></button>
-                    <button class="dpad-btn" onclick="moveDrone(0, 1)">▼</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const canvas = document.getElementById("isoCanvas");
-        const ctx = canvas.getContext("2d");
-
-        // Isometric viewport params
-        let tileWidth = 64;
-        let tileHeight = 32;
-        let zHeightOffset = 28; // visual height offset for stack elevations
-        let gridCols = 8;
-        let gridRows = 8;
-        let activeZ = 1;
-        let viewMode = 'ISOLATED'; // 'ALL' | 'ISOLATED' | 'WIREFRAME'
-        let currentBrush = 'ROAD'; // 'ROAD' | 'WALL' | 'LASER' | 'BARREL' | 'TERMINAL'
-
-        // Pan offsets
-        let panX = 0;
-        let panY = -30;
-
-        // Tile types mapping
         const TileType = {
             EMPTY: 0,
-            GRID_ROAD: 1,
+            ROAD: 1,
             WALL: 2,
             LASER: 3,
             BARREL: 4,
             TERMINAL: 5
         };
 
-        // Drone Character Position
-        let drone = {
-            x: 3.5,
-            y: 3.5,
-            z: 1.0,
-            color: '#00ffff'
+        const BrushLabels = {
+            'ROAD': 'Road Plate',
+            'WALL': 'Security Wall',
+            'LASER': 'Plasma Core',
+            'BARREL': 'Hazard Drum',
+            'TERMINAL': 'Database Terminal'
         };
 
-        // Complete 3D Grid Map [z][x][y]
-        // Initialize 4 layers of 8x8 grids
-        let mapData = [];
-        for (let z = 0; z < 4; z++) {
-            mapData[z] = [];
-            for (let x = 0; x < gridCols; x++) {
-                mapData[z][x] = [];
-                for (let y = 0; y < gridRows; y++) {
-                    // Default road on Z1 and Z0, empty elsewhere
-                    if (z === 1 && (x === 3 || y === 4)) {
-                        mapData[z][x][y] = TileType.GRID_ROAD;
-                    } else if (z === 0 && (x === 1 || y === 6)) {
-                        mapData[z][x][y] = TileType.GRID_ROAD;
-                    } else {
-                        mapData[z][x][y] = TileType.EMPTY;
+        // Main React App Component
+        function App() {
+            const [activeZ, setActiveZ] = useState(1);
+            const [viewMode, setViewMode] = useState('ISOLATED'); // 'ALL' | 'ISOLATED' | 'WIREFRAME'
+            const [brush, setBrush] = useState('ROAD');
+            const [brushHeight, setBrushHeight] = useState(1);
+            const [hoverCell, setHoverCell] = useState({ x: -1, y: -1 });
+            const [logs, setLogs] = useState([
+                "SYSTEM: INITIALIZING REAL-TIME REACT ENGINE",
+                "SYSTEM: ELEVATION OFFSET SUB-PROCESSORS ONLINE... OK"
+            ]);
+            
+            // Map data state: 4 layers (Z=0..3) of 8x8 grids storing tile objects { type, height }
+            const [mapData, setMapData] = useState(() => {
+                const initialMap = [];
+                for (let z = 0; z < 4; z++) {
+                    initialMap[z] = [];
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        initialMap[z][x] = [];
+                        for (let y = 0; y < GRID_SIZE; y++) {
+                            // Pre-generate standard roads on Z0 and Z1
+                            if (z === 1 && (x === 3 || y === 4)) {
+                                initialMap[z][x][y] = { type: TileType.ROAD, height: 0 };
+                            } else if (z === 0 && (x === 1 || y === 6)) {
+                                initialMap[z][x][y] = { type: TileType.ROAD, height: 0 };
+                            } else {
+                                initialMap[z][x][y] = { type: TileType.EMPTY, height: 0 };
+                            }
+                        }
                     }
                 }
-            }
-        }
+                
+                // Add default elevated structured assets
+                initialMap[1][3][3] = { type: TileType.TERMINAL, height: 1 };
+                initialMap[1][5][2] = { type: TileType.WALL, height: 2 };
+                initialMap[1][5][3] = { type: TileType.WALL, height: 2 };
+                initialMap[1][2][5] = { type: TileType.BARREL, height: 1 };
+                initialMap[1][0][4] = { type: TileType.LASER, height: 0 };
 
-        // Prepopulate with nice isometric layout elements
-        mapData[1][3][3] = TileType.TERMINAL;
-        mapData[1][5][2] = TileType.WALL;
-        mapData[1][5][3] = TileType.WALL;
-        mapData[1][2][5] = TileType.BARREL;
-        mapData[1][0][4] = TileType.LASER;
+                initialMap[2][3][4] = { type: TileType.ROAD, height: 2 };
+                initialMap[2][4][4] = { type: TileType.ROAD, height: 2 };
+                initialMap[2][4][5] = { type: TileType.WALL, height: 3 };
 
-        mapData[2][3][4] = TileType.GRID_ROAD;
-        mapData[2][4][4] = TileType.GRID_ROAD;
-        mapData[2][4][5] = TileType.WALL;
-
-        // Resize handler
-        function resizeCanvas() {
-            canvas.width = canvas.parentElement.clientWidth;
-            canvas.height = canvas.parentElement.clientHeight;
-            draw();
-        }
-        window.addEventListener("resize", resizeCanvas);
-
-        // Grid Isometric coordinates conversion
-        function toIso(x, y, z) {
-            const screenX = canvas.width / 2 + (x - y) * (tileWidth / 2) + panX;
-            const screenY = canvas.height / 2 + (x + y) * (tileHeight / 2) - z * zHeightOffset + panY;
-            return { x: screenX, y: screenY };
-        }
-
-        function toGrid(screenX, screenY) {
-            // Un-offset pan
-            const sx = screenX - canvas.width / 2 - panX;
-            const sy = screenY - canvas.height / 2 - panY + activeZ * zHeightOffset;
-
-            // Solve isometric projections system of equations
-            // sx = (x - y) * (tileWidth / 2)
-            // sy = (x + y) * (tileHeight / 2)
-            const isoX = (sx / (tileWidth / 2) + sy / (tileHeight / 2)) / 2;
-            const isoY = (sy / (tileHeight / 2) - sx / (tileWidth / 2)) / 2;
-
-            return {
-                x: Math.floor(isoX),
-                y: Math.floor(isoY)
-            };
-        }
-
-        // Setup interaction
-        let hoverGrid = { x: -1, y: -1 };
-
-        canvas.addEventListener("mousemove", (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-
-            const grid = toGrid(mouseX, mouseY);
-            if (grid.x >= 0 && grid.x < gridCols && grid.y >= 0 && grid.y < gridRows) {
-                hoverGrid = grid;
-                document.getElementById("cursor-indicator").innerHTML = `
-                    CURSOR: (${grid.x}, ${grid.y})<br>
-                    LAYER: Z=${activeZ}<br>
-                    BRUSH: ${currentBrush}
-                `;
-            } else {
-                hoverGrid = { x: -1, y: -1 };
-                document.getElementById("cursor-indicator").innerHTML = `
-                    CURSOR: OUT OF GRID<br>
-                    LAYER: Z=${activeZ}<br>
-                    BRUSH: ${currentBrush}
-                `;
-            }
-            draw();
-        });
-
-        canvas.addEventListener("click", (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-
-            const grid = toGrid(mouseX, mouseY);
-            if (grid.x >= 0 && grid.x < gridCols && grid.y >= 0 && grid.y < gridRows) {
-                const currentType = mapData[activeZ][grid.x][grid.y];
-                const targetType = getBrushType();
-
-                if (currentType === targetType) {
-                    // Toggle erase
-                    mapData[activeZ][grid.x][grid.y] = TileType.EMPTY;
-                } else {
-                    mapData[activeZ][grid.x][grid.y] = targetType;
-                }
-                draw();
-            }
-        });
-
-        // Brush mappings
-        function getBrushType() {
-            switch(currentBrush) {
-                case 'ROAD': return TileType.GRID_ROAD;
-                case 'WALL': return TileType.WALL;
-                case 'LASER': return TileType.LASER;
-                case 'BARREL': return TileType.BARREL;
-                case 'TERMINAL': return TileType.TERMINAL;
-                default: return TileType.GRID_ROAD;
-            }
-        }
-
-        function setBrush(brush) {
-            currentBrush = brush;
-            const buttons = ["b-road", "b-wall", "b-laser", "b-barrel", "b-term"];
-            buttons.forEach(id => {
-                const btn = document.getElementById(id);
-                if (btn) btn.classList.remove("active");
+                return initialMap;
             });
 
-            const activeBtn = document.getElementById(`b-${brush.toLowerCase().substring(0,4)}`);
-            if (activeBtn) activeBtn.classList.add("active");
-            draw();
-        }
+            // Player Drone Status
+            const [drone, setDrone] = useState({
+                x: 3.5,
+                y: 3.5,
+                z: 1.0
+            });
 
-        function setZLevel(level) {
-            activeZ = level;
-            for (let i = 0; i < 4; i++) {
-                document.getElementById(`z-${i}`).classList.remove("active");
-            }
-            document.getElementById(`z-${level}`).classList.add("active");
-            document.getElementById("info-bar").innerText = `GRID: 8x8 // Z-LAYERS: 4 // ACTIVE LAYER: Z=${level}`;
-            
-            // Adjust character Z as well so they drop down/fly up
-            drone.z = level;
+            const canvasRef = useRef(null);
+            const animationRef = useRef(null);
+            const panOffset = { x: 0, y: -30 };
 
-            draw();
-        }
+            // Helper to log actions
+            const addLog = (msg) => {
+                setLogs(prev => [msg, ...prev].slice(0, 8));
+            };
 
-        function setViewMode(mode) {
-            viewMode = mode;
-            document.getElementById("lay-all").classList.remove("active");
-            document.getElementById("lay-iso").classList.remove("active");
-            document.getElementById("lay-wire").classList.remove("active");
+            // Grid projection maths
+            const toIso = (x, y, z, width, height) => {
+                const screenX = width / 2 + (x - y) * (TILE_WIDTH / 2) + panOffset.x;
+                const screenY = height / 2 + (x + y) * (TILE_HEIGHT / 2) - z * Z_OFFSET + panOffset.y;
+                return { x: screenX, y: screenY };
+            };
 
-            if (mode === 'ALL') document.getElementById("lay-all").classList.add("active");
-            if (mode === 'ISOLATED') document.getElementById("lay-iso").classList.add("active");
-            if (mode === 'WIREFRAME') document.getElementById("lay-wire").classList.add("active");
-            draw();
-        }
+            const toGrid = (screenX, screenY, width, height) => {
+                const sx = screenX - width / 2 - panOffset.x;
+                const sy = screenY - height / 2 - panOffset.y + activeZ * Z_OFFSET;
 
-        function clearActiveLayer() {
-            for (let x = 0; x < gridCols; x++) {
-                for (let y = 0; y < gridRows; y++) {
-                    mapData[activeZ][x][y] = TileType.EMPTY;
-                }
-            }
-            draw();
-        }
+                const isoX = (sx / (TILE_WIDTH / 2) + sy / (TILE_HEIGHT / 2)) / 2;
+                const isoY = (sy / (TILE_HEIGHT / 2) - sx / (TILE_WIDTH / 2)) / 2;
 
-        function randomizeGrid() {
-            for (let z = 0; z < 4; z++) {
-                for (let x = 0; x < gridCols; x++) {
-                    for (let y = 0; y < gridRows; y++) {
-                        const rand = Math.random();
-                        if (rand < 0.4) {
-                            mapData[z][x][y] = TileType.GRID_ROAD;
-                        } else if (rand < 0.52) {
-                            mapData[z][x][y] = TileType.WALL;
-                        } else if (rand < 0.55) {
-                            mapData[z][x][y] = TileType.BARREL;
-                        } else if (rand < 0.57) {
-                            mapData[z][x][y] = TileType.TERMINAL;
-                        } else if (rand < 0.6) {
-                            mapData[z][x][y] = TileType.LASER;
-                        } else {
-                            mapData[z][x][y] = TileType.EMPTY;
+                return {
+                    x: Math.floor(isoX),
+                    y: Math.floor(isoY)
+                };
+            };
+
+            // Map generation triggers
+            const randomizeMap = () => {
+                const newMap = [];
+                for (let z = 0; z < 4; z++) {
+                    newMap[z] = [];
+                    for (let x = 0; x < GRID_SIZE; x++) {
+                        newMap[z][x] = [];
+                        for (let y = 0; y < GRID_SIZE; y++) {
+                            const rand = Math.random();
+                            const heightRand = Math.floor(Math.random() * 3); // random elevation height 0..2
+                            if (rand < 0.35) {
+                                newMap[z][x][y] = { type: TileType.ROAD, height: heightRand };
+                            } else if (rand < 0.48) {
+                                newMap[z][x][y] = { type: TileType.WALL, height: heightRand + 1 };
+                            } else if (rand < 0.52) {
+                                newMap[z][x][y] = { type: TileType.BARREL, height: heightRand };
+                            } else if (rand < 0.55) {
+                                newMap[z][x][y] = { type: TileType.TERMINAL, height: heightRand };
+                            } else if (rand < 0.58) {
+                                newMap[z][x][y] = { type: TileType.LASER, height: heightRand };
+                            } else {
+                                newMap[z][x][y] = { type: TileType.EMPTY, height: 0 };
+                            }
                         }
                     }
                 }
-            }
-            draw();
-        }
+                setMapData(newMap);
+                addLog("MAP: GENERATING FRESH ELEVATED MATRIX SECTORS");
+            };
 
-        // Draw functions
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const clearLevel = () => {
+                setMapData(prev => {
+                    const next = [...prev];
+                    next[activeZ] = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null).map(() => ({ type: TileType.EMPTY, height: 0 })));
+                    return next;
+                });
+                addLog(`MAP: CODES ERASED AT LAYER Z=${activeZ}`);
+            };
 
-            // Draw isometric grid lines / coordinates base helper
-            drawBaseFloorGrid();
-
-            // Draw multi-level map data layers
-            for (let z = 0; z < 4; z++) {
-                // If in isolated view, skip levels that aren't the active level
-                if (viewMode === 'ISOLATED' && z !== activeZ) {
-                    continue;
-                }
-
-                // Calculate opacity for translucency
-                let alpha = 1.0;
-                if (viewMode === 'ALL' && z !== activeZ) {
-                    alpha = 0.25; // Translucent secondary layer
-                }
-
-                for (let x = 0; x < gridCols; x++) {
-                    for (let y = 0; y < gridRows; y++) {
-                        const tile = mapData[z][x][y];
-                        if (tile !== TileType.EMPTY) {
-                            drawIsometricElement(x, y, z, tile, alpha);
-                        }
-
-                        // Highlight hover grid cell
-                        if (z === activeZ && x === hoverGrid.x && y === hoverGrid.y) {
-                            drawTileOverlay(x, y, z, "rgba(0, 255, 204, 0.45)", "#00ffcc");
-                        }
-                    }
-                }
-            }
-
-            // Draw Drone character
-            drawDrone();
-        }
-
-        function drawBaseFloorGrid() {
-            ctx.save();
-            ctx.strokeStyle = "rgba(0, 255, 204, 0.08)";
-            ctx.lineWidth = 1;
-
-            for (let x = 0; x <= gridCols; x++) {
-                const start = toIso(x, 0, 0);
-                const end = toIso(x, gridRows, 0);
-                ctx.beginPath();
-                ctx.moveTo(start.x, start.y);
-                ctx.lineTo(end.x, end.y);
-                ctx.stroke();
-            }
-
-            for (let y = 0; y <= gridRows; y++) {
-                const start = toIso(0, y, 0);
-                const end = toIso(gridCols, y, 0);
-                ctx.beginPath();
-                ctx.moveTo(start.x, start.y);
-                ctx.lineTo(end.x, end.y);
-                ctx.stroke();
-            }
-            ctx.restore();
-        }
-
-        function drawTileOverlay(x, y, z, fillCol, strokeCol) {
-            const pos = toIso(x, y, z);
-            ctx.save();
-            ctx.beginPath();
-            ctx.moveTo(pos.x, pos.y - tileHeight / 2);
-            ctx.lineTo(pos.x + tileWidth / 2, pos.y);
-            ctx.lineTo(pos.x, pos.y + tileHeight / 2);
-            ctx.lineTo(pos.x - tileWidth / 2, pos.y);
-            ctx.closePath();
-            ctx.fillStyle = fillCol;
-            ctx.fill();
-            ctx.strokeStyle = strokeCol;
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        function drawIsometricElement(x, y, z, tile, alpha) {
-            const pos = toIso(x, y, z);
-
-            ctx.save();
-            ctx.globalAlpha = alpha;
-
-            if (viewMode === 'WIREFRAME') {
-                // Draw skeleton cage only
-                drawWireframeCube(x, y, z, tile);
-                ctx.restore();
-                return;
-            }
-
-            switch(tile) {
-                case TileType.GRID_ROAD:
-                    // Cyber Road plate colors depending on elevation Z
-                    let fill = "#112222";
-                    let stroke = "rgba(0, 255, 204, 0.35)";
-                    if (z === 1) { fill = "#1a1f29"; stroke = "rgba(220, 100, 255, 0.35)"; }
-                    if (z === 2) { fill = "#2a1f2d"; stroke = "rgba(0, 150, 255, 0.45)"; }
-                    if (z === 3) { fill = "#1f2922"; stroke = "rgba(0, 255, 100, 0.45)"; }
-
-                    ctx.beginPath();
-                    ctx.moveTo(pos.x, pos.y - tileHeight / 2);
-                    ctx.lineTo(pos.x + tileWidth / 2, pos.y);
-                    ctx.lineTo(pos.x, pos.y + tileHeight / 2);
-                    ctx.lineTo(pos.x - tileWidth / 2, pos.y);
-                    ctx.closePath();
-                    ctx.fillStyle = fill;
-                    ctx.fill();
-                    ctx.strokeStyle = stroke;
-                    ctx.lineWidth = 1.5;
-                    ctx.stroke();
-                    break;
-
-                case TileType.WALL:
-                    // Render Extruded 3D Wall Box
-                    const topYOffset = zHeightOffset * 1.2;
-                    const topPos = { x: pos.x, y: pos.y - topYOffset };
-
-                    // Colors
-                    const leftCol = "#151b1f";
-                    const rightCol = "#1b2329";
-                    const topCol = "#242e36";
-                    const highlight = "rgba(0, 255, 204, 0.45)";
-
-                    // Left face
-                    ctx.beginPath();
-                    ctx.moveTo(pos.x - tileWidth / 2, pos.y);
-                    ctx.lineTo(pos.x, pos.y + tileHeight / 2);
-                    ctx.lineTo(topPos.x, topPos.y + tileHeight / 2);
-                    ctx.lineTo(topPos.x - tileWidth / 2, topPos.y);
-                    ctx.closePath();
-                    ctx.fillStyle = leftCol;
-                    ctx.fill();
-                    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-                    ctx.stroke();
-
-                    // Right face
-                    ctx.beginPath();
-                    ctx.moveTo(pos.x, pos.y + tileHeight / 2);
-                    ctx.lineTo(pos.x + tileWidth / 2, pos.y);
-                    ctx.lineTo(topPos.x + tileWidth / 2, topPos.y);
-                    ctx.lineTo(topPos.x, topPos.y + tileHeight / 2);
-                    ctx.closePath();
-                    ctx.fillStyle = rightCol;
-                    ctx.fill();
-                    ctx.stroke();
-
-                    // Top face
-                    ctx.beginPath();
-                    ctx.moveTo(topPos.x, topPos.y - tileHeight / 2);
-                    ctx.lineTo(topPos.x + tileWidth / 2, topPos.y);
-                    ctx.lineTo(topPos.x, topPos.y + tileHeight / 2);
-                    ctx.lineTo(topPos.x - tileWidth / 2, topPos.y);
-                    ctx.closePath();
-                    ctx.fillStyle = topCol;
-                    ctx.fill();
-                    ctx.strokeStyle = highlight;
-                    ctx.stroke();
-                    break;
-
-                case TileType.LASER:
-                    // Render high hazard pulsing laser core emitter
-                    ctx.shadowBlur = 10;
-                    ctx.shadowColor = "#ff3366";
-
-                    // Base pillar
-                    ctx.fillStyle = "#221115";
-                    ctx.strokeStyle = "#ff3366";
-                    ctx.beginPath();
-                    ctx.arc(pos.x, pos.y, 10, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
-
-                    // Rising plasma laser ray beam line
-                    ctx.lineWidth = 3;
-                    ctx.strokeStyle = "#ff3366";
-                    ctx.beginPath();
-                    ctx.moveTo(pos.x, pos.y);
-                    ctx.lineTo(pos.x, pos.y - 45);
-                    ctx.stroke();
-
-                    ctx.lineWidth = 1;
-                    ctx.strokeStyle = "#ffffff";
-                    ctx.beginPath();
-                    ctx.moveTo(pos.x, pos.y);
-                    ctx.lineTo(pos.x, pos.y - 45);
-                    ctx.stroke();
-                    break;
-
-                case TileType.BARREL:
-                    // Explosive drum cylinder
-                    ctx.fillStyle = "#e07a1b";
-                    ctx.strokeStyle = "#111111";
+            const moveDrone = (dx, dy) => {
+                setDrone(prev => {
+                    const targetX = Math.min(Math.max(prev.x + dx * 0.5, 0), GRID_SIZE - 0.1);
+                    const targetY = Math.min(Math.max(prev.y + dy * 0.5, 0), GRID_SIZE - 0.1);
                     
-                    // Barrel bottom ellipse
-                    ctx.beginPath();
-                    ctx.ellipse(pos.x, pos.y + 4, 8, 4, 0, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
+                    // Simple wall constraint
+                    const cellX = Math.floor(targetX);
+                    const cellY = Math.floor(targetY);
+                    const currentTileObj = mapData[activeZ][cellX]?.[cellY] || { type: TileType.EMPTY, height: 0 };
+                    if (currentTileObj.type === TileType.WALL) {
+                        addLog("DRONE: BLOCK COLLISION DETECTED!");
+                        return prev;
+                    }
+                    
+                    // Follow elevation: target visual height adapts to tile's elevation
+                    const targetHeight = activeZ + (currentTileObj.height * HEIGHT_UNIT) / Z_OFFSET;
+                    return { ...prev, x: targetX, y: targetY, z: targetHeight };
+                });
+            };
 
-                    // Core walls
+            // Keyboard navigation
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    switch (e.key.toLowerCase()) {
+                        case 'w': moveDrone(0, -1); break;
+                        case 's': moveDrone(0, 1); break;
+                        case 'a': moveDrone(-1, 0); break;
+                        case 'd': moveDrone(1, 0); break;
+                        case 'q':
+                            if (activeZ < 3) {
+                                setActiveZ(z => z + 1);
+                                addLog(`DRONE: CLIMBED TO LAYER Z=${activeZ + 1}`);
+                            }
+                            break;
+                        case 'e':
+                            if (activeZ > 0) {
+                                setActiveZ(z => z - 1);
+                                addLog(`DRONE: DESCENDED TO LAYER Z=${activeZ - 1}`);
+                            }
+                            break;
+                    }
+                };
+                window.addEventListener("keydown", handleKeyDown);
+                return () => window.removeEventListener("keydown", handleKeyDown);
+            }, [activeZ, mapData]);
+
+            // Synchronize drone elevation
+            useEffect(() => {
+                const cellX = Math.floor(drone.x);
+                const cellY = Math.floor(drone.y);
+                const currentTileObj = mapData[activeZ][cellX]?.[cellY] || { type: TileType.EMPTY, height: 0 };
+                const targetHeight = activeZ + (currentTileObj.height * HEIGHT_UNIT) / Z_OFFSET;
+                setDrone(d => ({ ...d, z: targetHeight }));
+            }, [activeZ, mapData]);
+
+            // Handling Mouse Interaction on Canvas
+            const handleMouseMove = (e) => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                const grid = toGrid(mouseX, mouseY, canvas.width, canvas.height);
+                if (grid.x >= 0 && grid.x < GRID_SIZE && grid.y >= 0 && grid.y < GRID_SIZE) {
+                    setHoverCell(grid);
+                } else {
+                    setHoverCell({ x: -1, y: -1 });
+                }
+            };
+
+            const handleCanvasClick = (e) => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+
+                const grid = toGrid(mouseX, mouseY, canvas.width, canvas.height);
+                if (grid.x >= 0 && grid.x < GRID_SIZE && grid.y >= 0 && grid.y < GRID_SIZE) {
+                    setMapData(prev => {
+                        const next = [...prev];
+                        const currentCell = next[activeZ][grid.x][grid.y];
+                        
+                        let targetType = TileType.EMPTY;
+                        if (brush === 'ROAD') targetType = TileType.ROAD;
+                        else if (brush === 'WALL') targetType = TileType.WALL;
+                        else if (brush === 'LASER') targetType = TileType.LASER;
+                        else if (brush === 'BARREL') targetType = TileType.BARREL;
+                        else if (brush === 'TERMINAL') targetType = TileType.TERMINAL;
+
+                        if (currentCell.type === targetType && currentCell.height === brushHeight) {
+                            next[activeZ][grid.x][grid.y] = { type: TileType.EMPTY, height: 0 };
+                            addLog(`ERASED tile at (${grid.x}, ${grid.y}, Z=${activeZ})`);
+                        } else {
+                            next[activeZ][grid.x][grid.y] = { type: targetType, height: brushHeight };
+                            addLog(`PLACED ${brush} (H=${brushHeight}) at (${grid.x}, ${grid.y}, Z=${activeZ})`);
+                        }
+                        return next;
+                    });
+                }
+            };
+
+            // Resize Canvas Hook
+            useEffect(() => {
+                const handleResize = () => {
+                    const canvas = canvasRef.current;
+                    if (!canvas) return;
+                    canvas.width = canvas.parentElement.clientWidth;
+                    canvas.height = canvas.parentElement.clientHeight;
+                };
+                window.addEventListener("resize", handleResize);
+                handleResize(); // Initial call
+                return () => window.removeEventListener("resize", handleResize);
+            }, []);
+
+            // Main Animation Rendering Loop
+            useEffect(() => {
+                const render = () => {
+                    const canvas = canvasRef.current;
+                    if (!canvas) return;
+                    const ctx = canvas.getContext("2d");
+                    const width = canvas.width;
+                    const height = canvas.height;
+
+                    ctx.clearRect(0, 0, width, height);
+
+                    // 1. Draw base floor isometric grid
+                    ctx.save();
+                    ctx.strokeStyle = "rgba(0, 255, 204, 0.08)";
+                    ctx.lineWidth = 1;
+
+                    for (let x = 0; x <= GRID_SIZE; x++) {
+                        const start = toIso(x, 0, 0, width, height);
+                        const end = toIso(x, GRID_SIZE, 0, width, height);
+                        ctx.beginPath();
+                        ctx.moveTo(start.x, start.y);
+                        ctx.lineTo(end.x, end.y);
+                        ctx.stroke();
+                    }
+
+                    for (let y = 0; y <= GRID_SIZE; y++) {
+                        const start = toIso(0, y, 0, width, height);
+                        const end = toIso(GRID_SIZE, y, 0, width, height);
+                        ctx.beginPath();
+                        ctx.moveTo(start.x, start.y);
+                        ctx.lineTo(end.x, end.y);
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+
+                    // 2. Draw Multi-Layer Map blocks (with elevation height support)
+                    for (let z = 0; z < 4; z++) {
+                        // View mode isolation checks
+                        if (viewMode === 'ISOLATED' && z !== activeZ) continue;
+
+                        let alpha = 1.0;
+                        if (viewMode === 'ALL' && z !== activeZ) {
+                            alpha = 0.22; // Translucent preview for non-active levels
+                        }
+
+                        for (let x = 0; x < GRID_SIZE; x++) {
+                            for (let y = 0; y < GRID_SIZE; y++) {
+                                const cellObj = mapData[z][x][y];
+                                if (cellObj.type !== TileType.EMPTY) {
+                                    drawElement(ctx, x, y, z, cellObj, alpha, width, height);
+                                }
+
+                                // Draw hovered cell outline overlay on active level (offset by target brush height for visual alignment)
+                                if (z === activeZ && x === hoverCell.x && y === hoverCell.y) {
+                                    const h = cellObj.type !== TileType.EMPTY ? cellObj.height : brushHeight;
+                                    const pos = toIso(x, y, z, width, height);
+                                    const elevatedY = pos.y - h * HEIGHT_UNIT;
+                                    
+                                    ctx.save();
+                                    ctx.beginPath();
+                                    ctx.moveTo(pos.x, elevatedY - TILE_HEIGHT / 2);
+                                    ctx.lineTo(pos.x + TILE_WIDTH / 2, elevatedY);
+                                    ctx.lineTo(pos.x, elevatedY + TILE_HEIGHT / 2);
+                                    ctx.lineTo(pos.x - TILE_WIDTH / 2, elevatedY);
+                                    ctx.closePath();
+                                    ctx.fillStyle = "rgba(0, 255, 204, 0.45)";
+                                    ctx.fill();
+                                    ctx.strokeStyle = "#00ffcc";
+                                    ctx.lineWidth = 1.5;
+                                    ctx.stroke();
+                                    ctx.restore();
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Draw Player Drone
+                    if (viewMode !== 'ISOLATED' || Math.floor(drone.z) === activeZ) {
+                        const pos = toIso(drone.x, drone.y, drone.z, width, height);
+                        const bounce = Math.sin(Date.now() / 180) * 4;
+                        const dy = pos.y - 12 + bounce;
+
+                        ctx.save();
+                        ctx.shadowBlur = 8;
+                        ctx.shadowColor = "#00ffff";
+
+                        // Floating Blue Propulsion Halo Ring
+                        ctx.fillStyle = "rgba(0, 255, 255, 0.45)";
+                        ctx.strokeStyle = "#00ffff";
+                        ctx.beginPath();
+                        ctx.ellipse(pos.x, dy, 11, 5, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        // Core drone node body
+                        ctx.fillStyle = "#ffffff";
+                        ctx.beginPath();
+                        ctx.arc(pos.x, dy - 4, 3.5, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        // Animated propeller spinning
+                        const angle = Date.now() / 35;
+                        ctx.lineWidth = 1.2;
+                        ctx.strokeStyle = "#8b949e";
+                        ctx.beginPath();
+                        ctx.moveTo(pos.x - Math.cos(angle) * 12, dy - 4 - Math.sin(angle) * 3);
+                        ctx.lineTo(pos.x + Math.cos(angle) * 12, dy - 4 + Math.sin(angle) * 3);
+                        ctx.stroke();
+
+                        // Cast ambient shadow below drone (pinned to floor surface)
+                        ctx.shadowBlur = 0;
+                        ctx.fillStyle = "rgba(0,0,0,0.45)";
+                        
+                        const cellX = Math.floor(drone.x);
+                        const cellY = Math.floor(drone.y);
+                        const currentTileObj = mapData[activeZ]?.[cellX]?.[cellY] || { type: TileType.EMPTY, height: 0 };
+                        const floorZ = activeZ + (currentTileObj.height * HEIGHT_UNIT) / Z_OFFSET;
+                        const floorPos = toIso(drone.x, drone.y, floorZ, width, height);
+                        
+                        ctx.beginPath();
+                        ctx.ellipse(floorPos.x, floorPos.y, 7, 3.5, 0, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        ctx.restore();
+                    }
+
+                    animationRef.current = requestAnimationFrame(render);
+                };
+
+                animationRef.current = requestAnimationFrame(render);
+                return () => cancelAnimationFrame(animationRef.current);
+            }, [mapData, activeZ, viewMode, hoverCell, drone, brushHeight]);
+
+            // Sub-renderer for specific elevated isometric elements
+            const drawElement = (ctx, x, y, z, cell, alpha, width, height) => {
+                const tile = cell.type;
+                const h = cell.height || 0;
+                const pos = toIso(x, y, z, width, height);
+                const elevatedY = pos.y - h * HEIGHT_UNIT;
+                const topPos = { x: pos.x, y: elevatedY };
+
+                ctx.save();
+                ctx.globalAlpha = alpha;
+
+                // 1. Draw 3D Under-Structure Column/Walls if elevated (h > 0)
+                if (h > 0 && viewMode !== 'WIREFRAME') {
+                    // Left Face
                     ctx.beginPath();
-                    ctx.moveTo(pos.x - 8, pos.y + 4);
-                    ctx.lineTo(pos.x - 8, pos.y - 12);
-                    ctx.lineTo(pos.x + 8, pos.y - 12);
-                    ctx.lineTo(pos.x + 8, pos.y + 4);
+                    ctx.moveTo(pos.x - TILE_WIDTH / 2, pos.y);
+                    ctx.lineTo(pos.x, pos.y + TILE_HEIGHT / 2);
+                    ctx.lineTo(pos.x, pos.y + TILE_HEIGHT / 2 - h * HEIGHT_UNIT);
+                    ctx.lineTo(pos.x - TILE_WIDTH / 2, pos.y - h * HEIGHT_UNIT);
                     ctx.closePath();
+                    ctx.fillStyle = "#0c1015"; // Very dark left shadow face
                     ctx.fill();
+                    ctx.strokeStyle = "rgba(0, 255, 204, 0.15)";
                     ctx.stroke();
 
-                    // Top orange cap
-                    ctx.fillStyle = "#ffaa44";
+                    // Right Face
                     ctx.beginPath();
-                    ctx.ellipse(pos.x, pos.y - 12, 8, 4, 0, 0, Math.PI * 2);
+                    ctx.moveTo(pos.x, pos.y + TILE_HEIGHT / 2);
+                    ctx.lineTo(pos.x + TILE_WIDTH / 2, pos.y);
+                    ctx.lineTo(pos.x + TILE_WIDTH / 2, pos.y - h * HEIGHT_UNIT);
+                    ctx.lineTo(pos.x, pos.y + TILE_HEIGHT / 2 - h * HEIGHT_UNIT);
+                    ctx.closePath();
+                    ctx.fillStyle = "#151b22"; // Moderately dark right face
                     ctx.fill();
+                    ctx.strokeStyle = "rgba(0, 255, 204, 0.15)";
                     ctx.stroke();
-                    break;
+                }
 
-                case TileType.TERMINAL:
-                    // Command workstation terminal node
-                    ctx.fillStyle = "#111111";
+                if (viewMode === 'WIREFRAME') {
+                    // Draw clean wireframe cage outline with elevation offset
                     ctx.strokeStyle = "#00ffcc";
+                    ctx.lineWidth = 1;
+                    const heightFactor = tile === TileType.WALL ? 1.25 : 0.25;
+                    const topY = topPos.y - Z_OFFSET * heightFactor;
 
-                    // Base stand
+                    // Bottom face of base tile (on floor)
+                    ctx.strokeStyle = "rgba(0, 255, 204, 0.15)";
                     ctx.beginPath();
-                    ctx.moveTo(pos.x - 4, pos.y);
-                    ctx.lineTo(pos.x + 4, pos.y);
-                    ctx.lineTo(pos.x + 2, pos.y - 12);
-                    ctx.lineTo(pos.x - 2, pos.y - 12);
+                    ctx.moveTo(pos.x, pos.y - TILE_HEIGHT / 2);
+                    ctx.lineTo(pos.x + TILE_WIDTH / 2, pos.y);
+                    ctx.lineTo(pos.x, pos.y + TILE_HEIGHT / 2);
+                    ctx.lineTo(pos.x - TILE_WIDTH / 2, pos.y);
                     ctx.closePath();
-                    ctx.fill();
                     ctx.stroke();
 
-                    // Floating glowing digital matrix screen panel
-                    const pulse = Math.sin(Date.now() / 150) * 3;
-                    const scY = pos.y - 20 + pulse;
-
-                    ctx.fillStyle = "rgba(0, 255, 204, 0.15)";
+                    // Bottom of elevated tile surface
+                    ctx.strokeStyle = "#00ffcc";
                     ctx.beginPath();
-                    ctx.moveTo(pos.x - 10, scY - 5);
-                    ctx.lineTo(pos.x + 10, scY - 5);
-                    ctx.lineTo(pos.x + 7, scY + 5);
-                    ctx.lineTo(pos.x - 7, scY + 5);
+                    ctx.moveTo(topPos.x, topPos.y - TILE_HEIGHT / 2);
+                    ctx.lineTo(topPos.x + TILE_WIDTH / 2, topPos.y);
+                    ctx.lineTo(topPos.x, topPos.y + TILE_HEIGHT / 2);
+                    ctx.lineTo(topPos.x - TILE_WIDTH / 2, topPos.y);
                     ctx.closePath();
-                    ctx.fill();
                     ctx.stroke();
-                    break;
-            }
 
-            ctx.restore();
+                    // Top of actual structure (e.g. if wall)
+                    ctx.beginPath();
+                    ctx.moveTo(topPos.x, topY - TILE_HEIGHT / 2);
+                    ctx.lineTo(topPos.x + TILE_WIDTH / 2, topY);
+                    ctx.lineTo(topPos.x, topY + TILE_HEIGHT / 2);
+                    ctx.lineTo(topPos.x - TILE_WIDTH / 2, topY);
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    // Connectors
+                    ctx.beginPath();
+                    ctx.moveTo(topPos.x - TILE_WIDTH/2, topPos.y); ctx.lineTo(topPos.x - TILE_WIDTH/2, topY);
+                    ctx.moveTo(topPos.x + TILE_WIDTH/2, topPos.y); ctx.lineTo(topPos.x + TILE_WIDTH/2, topY);
+                    ctx.moveTo(topPos.x, topPos.y - TILE_HEIGHT/2); ctx.lineTo(topPos.x, topY - TILE_HEIGHT/2);
+                    ctx.moveTo(topPos.x, topPos.y + TILE_HEIGHT/2); ctx.lineTo(topPos.x, topY + TILE_HEIGHT/2);
+                    ctx.stroke();
+
+                    ctx.restore();
+                    return;
+                }
+
+                // Render specific tiles offset to their elevated positions
+                switch (tile) {
+                    case TileType.ROAD:
+                        let roadFill = "#112222";
+                        let roadStroke = "rgba(0, 255, 204, 0.3)";
+                        if (z === 1) { roadFill = "#1a1f29"; roadStroke = "rgba(189, 147, 249, 0.3)"; }
+                        else if (z === 2) { roadFill = "#291f2c"; roadStroke = "rgba(0, 150, 255, 0.3)"; }
+                        else if (z === 3) { roadFill = "#1f2a24"; roadStroke = "rgba(0, 255, 100, 0.3)"; }
+
+                        ctx.beginPath();
+                        ctx.moveTo(topPos.x, topPos.y - TILE_HEIGHT / 2);
+                        ctx.lineTo(topPos.x + TILE_WIDTH / 2, topPos.y);
+                        ctx.lineTo(topPos.x, topPos.y + TILE_HEIGHT / 2);
+                        ctx.lineTo(topPos.x - TILE_WIDTH / 2, topPos.y);
+                        ctx.closePath();
+                        ctx.fillStyle = roadFill;
+                        ctx.fill();
+                        ctx.strokeStyle = roadStroke;
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+
+                        // Add small digital detail lines / grids on road
+                        ctx.strokeStyle = "rgba(0, 255, 204, 0.1)";
+                        ctx.beginPath();
+                        ctx.moveTo(topPos.x, topPos.y - TILE_HEIGHT / 4);
+                        ctx.lineTo(topPos.x, topPos.y + TILE_HEIGHT / 4);
+                        ctx.moveTo(topPos.x - TILE_WIDTH / 4, topPos.y);
+                        ctx.lineTo(topPos.x + TILE_WIDTH / 4, topPos.y);
+                        ctx.stroke();
+                        break;
+
+                    case TileType.WALL:
+                        const topYOffset = Z_OFFSET * 1.25;
+                        const roofPos = { x: topPos.x, y: topPos.y - topYOffset };
+
+                        // Left panel face
+                        ctx.beginPath();
+                        ctx.moveTo(topPos.x - TILE_WIDTH / 2, topPos.y);
+                        ctx.lineTo(topPos.x, topPos.y + TILE_HEIGHT / 2);
+                        ctx.lineTo(roofPos.x, roofPos.y + TILE_HEIGHT / 2);
+                        ctx.lineTo(roofPos.x - TILE_WIDTH / 2, roofPos.y);
+                        ctx.closePath();
+                        ctx.fillStyle = "#11161d";
+                        ctx.fill();
+                        ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+                        ctx.stroke();
+
+                        // Right panel face
+                        ctx.beginPath();
+                        ctx.moveTo(topPos.x, topPos.y + TILE_HEIGHT / 2);
+                        ctx.lineTo(topPos.x + TILE_WIDTH / 2, topPos.y);
+                        ctx.lineTo(roofPos.x + TILE_WIDTH / 2, roofPos.y);
+                        ctx.lineTo(roofPos.x, roofPos.y + TILE_HEIGHT / 2);
+                        ctx.closePath();
+                        ctx.fillStyle = "#19212a";
+                        ctx.fill();
+                        ctx.stroke();
+
+                        // Top roof face
+                        ctx.beginPath();
+                        ctx.moveTo(roofPos.x, roofPos.y - TILE_HEIGHT / 2);
+                        ctx.lineTo(roofPos.x + TILE_WIDTH / 2, roofPos.y);
+                        ctx.lineTo(roofPos.x, roofPos.y + TILE_HEIGHT / 2);
+                        ctx.lineTo(roofPos.x - TILE_WIDTH / 2, roofPos.y);
+                        ctx.closePath();
+                        ctx.fillStyle = "#222d3a";
+                        ctx.fill();
+                        ctx.strokeStyle = "rgba(0, 255, 204, 0.4)";
+                        ctx.stroke();
+                        break;
+
+                    case TileType.LASER:
+                        // Pulsing Hot-pink threat core
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = "#ff3366";
+
+                        ctx.fillStyle = "#261217";
+                        ctx.strokeStyle = "#ff3366";
+                        ctx.beginPath();
+                        ctx.arc(topPos.x, topPos.y, 8, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.lineWidth = 2.5;
+                        ctx.strokeStyle = "#ff3366";
+                        ctx.beginPath();
+                        ctx.moveTo(topPos.x, topPos.y);
+                        ctx.lineTo(topPos.x, topPos.y - 40);
+                        ctx.stroke();
+
+                        ctx.lineWidth = 1;
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.beginPath();
+                        ctx.moveTo(topPos.x, topPos.y);
+                        ctx.lineTo(topPos.x, topPos.y - 40);
+                        ctx.stroke();
+                        break;
+
+                    case TileType.BARREL:
+                        ctx.fillStyle = "#df7a1e";
+                        ctx.strokeStyle = "#000000";
+
+                        // Cylinder bottom ellipse
+                        ctx.beginPath();
+                        ctx.ellipse(topPos.x, topPos.y + 3, 7, 3.5, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        // Frame walls
+                        ctx.beginPath();
+                        ctx.moveTo(topPos.x - 7, topPos.y + 3);
+                        ctx.lineTo(topPos.x - 7, topPos.y - 11);
+                        ctx.lineTo(topPos.x + 7, topPos.y - 11);
+                        ctx.lineTo(topPos.x + 7, topPos.y + 3);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+
+                        // Top cap
+                        ctx.fillStyle = "#ffa23e";
+                        ctx.beginPath();
+                        ctx.ellipse(topPos.x, topPos.y - 11, 7, 3.5, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                        break;
+
+                    case TileType.TERMINAL:
+                        ctx.fillStyle = "#0c0f17";
+                        ctx.strokeStyle = "#00ffcc";
+
+                        // Stand base
+                        ctx.beginPath();
+                        ctx.moveTo(topPos.x - 4, topPos.y);
+                        ctx.lineTo(topPos.x + 4, topPos.y);
+                        ctx.lineTo(topPos.x + 2, topPos.y - 10);
+                        ctx.lineTo(topPos.x - 2, topPos.y - 10);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+
+                        // Glowing interface screen floating
+                        const slowBounce = Math.sin(Date.now() / 160) * 2.5;
+                        const screenY = topPos.y - 18 + slowBounce;
+
+                        ctx.fillStyle = "rgba(0, 255, 204, 0.18)";
+                        ctx.beginPath();
+                        ctx.moveTo(topPos.x - 9, screenY - 4);
+                        ctx.lineTo(topPos.x + 9, screenY - 4);
+                        ctx.lineTo(topPos.x + 6, screenY + 4);
+                        ctx.lineTo(topPos.x - 6, screenY + 4);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+                        break;
+                }
+                ctx.restore();
+            };
+
+            return (
+                <React.Fragment>
+                    <header className="cyber-header">
+                        <div>
+                            <div className="cyber-title">ISO-GRID MATRIX V2 // REACT SYSTEM</div>
+                            <div className="cyber-subtitle" id="info-bar">
+                                ACTIVE MAP SECTORS: {GRID_SIZE}x{GRID_SIZE} // ACTIVE LAYER: Z={activeZ}
+                            </div>
+                        </div>
+                        <button className="btn btn-action" onClick={randomizeMap}>RANDOMIZE ENGINE</button>
+                    </header>
+
+                    <div className="main-container">
+                        {/* Legend */}
+                        <div className="legend-box">
+                            <div className="legend-title">CELL ENCODINGS</div>
+                            <div className="legend-item">
+                                <div className="legend-color" style={{background: '#112222'}}></div>
+                                <span>Z=0 SEWER ROAD</span>
+                            </div>
+                            <div className="legend-item">
+                                <div className="legend-color" style={{background: '#1a1f29'}}></div>
+                                <span>Z=1 MAIN HIGHWAY</span>
+                            </div>
+                            <div className="legend-item">
+                                <div className="legend-color" style={{background: '#291f2c'}}></div>
+                                <span>Z=2 MEZZANINE DECK</span>
+                            </div>
+                            <div className="legend-item">
+                                <div className="legend-color" style={{background: '#00ffcc'}}></div>
+                                <span>DATABASE NODE</span>
+                            </div>
+                            <div className="legend-item">
+                                <div className="legend-color" style={{background: '#ff3366'}}></div>
+                                <span>HOT PLASMA REPL</span>
+                            </div>
+                            <div className="legend-item">
+                                <div className="legend-color" style={{background: '#df7a1e'}}></div>
+                                <span>HAZARD CYLINDER</span>
+                            </div>
+                        </div>
+
+                        {/* Interactive Activity Log console */}
+                        <div className="logs-panel">
+                            {logs.map((log, i) => (
+                                <div key={i} className="log-line">
+                                    {log}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Cursor indicator overlay */}
+                        <div className="indicator-box">
+                            <div>CURSOR: {hoverCell.x !== -1 ? `(${hoverCell.x}, ${hoverCell.y})` : 'OUT OF GRID'}</div>
+                            <div>LAYER: Z={activeZ}</div>
+                            <div>TILE: {hoverCell.x !== -1 ? `${Object.keys(TileType).find(key => TileType[key] === mapData[activeZ][hoverCell.x][hoverCell.y].type)} (H=${mapData[activeZ][hoverCell.x][hoverCell.y].height})` : 'N/A'}</div>
+                            <div>PAINT BRUSH: {BrushLabels[brush] || brush} (H={brushHeight})</div>
+                        </div>
+
+                        {/* Rendering Canvas area */}
+                        <div className="canvas-container">
+                            <canvas
+                                ref={canvasRef}
+                                onMouseMove={handleMouseMove}
+                                onClick={handleCanvasClick}
+                            />
+                        </div>
+
+                        {/* Control Interface Panel */}
+                        <div className="control-panel">
+                            <div className="control-row">
+                                <span className="control-label">LAYERS</span>
+                                <button
+                                    className={`btn ${viewMode === 'ALL' ? 'active' : ''}`}
+                                    onClick={() => { setViewMode('ALL'); addLog("VIEW: TOGGLED TRANSLUCENT OVERLAY"); }}
+                                >
+                                    ALL (TRANSLUCENT)
+                                </button>
+                                <button
+                                    className={`btn ${viewMode === 'ISOLATED' ? 'active' : ''}`}
+                                    onClick={() => { setViewMode('ISOLATED'); addLog("VIEW: TOGGLED ACTIVE LEVEL ISOLATION"); }}
+                                >
+                                    CURRENT LAYER ONLY
+                                </button>
+                                <button
+                                    className={`btn ${viewMode === 'WIREFRAME' ? 'active' : ''}`}
+                                    onClick={() => { setViewMode('WIREFRAME'); addLog("VIEW: TOGGLED WIREFRAME GRID SKELETON"); }}
+                                >
+                                    WIREFRAME
+                                </button>
+                            </div>
+
+                            <div className="control-row">
+                                <span className="control-label">Z-LEVEL</span>
+                                {[0, 1, 2, 3].map(lvl => (
+                                    <button
+                                        key={lvl}
+                                        className={`btn ${activeZ === lvl ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setActiveZ(lvl);
+                                            addLog(`LAYER: MODULATED FREQUENCY TO LEVEL Z=${lvl}`);
+                                        }}
+                                    >
+                                        Z={lvl} {lvl === 0 ? '(Sewer)' : lvl === 1 ? '(Highway)' : lvl === 2 ? '(Mezzanine)' : '(Rooftop)'}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="control-row">
+                                <span className="control-label">ELEVATION</span>
+                                {[0, 1, 2, 3, 4].map(hVal => (
+                                    <button
+                                        key={hVal}
+                                        className={`btn ${brushHeight === hVal ? 'active' : ''}`}
+                                        onClick={() => {
+                                            setBrushHeight(hVal);
+                                            addLog(`BRUSH ELEVATION: MODULATED PAINT TARGET TO HEIGHT H=${hVal}`);
+                                        }}
+                                    >
+                                        HEIGHT: {hVal}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="control-row">
+                                <span className="control-label">BRUSH</span>
+                                {Object.keys(BrushLabels).map(bKey => (
+                                    <button
+                                        key={bKey}
+                                        className={`btn ${brush === bKey ? 'active' : ''}`}
+                                        onClick={() => { setBrush(bKey); addLog(`BRUSH: SELECTED ${bKey}`); }}
+                                    >
+                                        {bKey}
+                                    </button>
+                                ))}
+                                <button className="btn btn-danger" onClick={clearLevel}>ERASE LEVEL</button>
+
+                                <div className="flex-spacer" />
+
+                                <span className="control-label" style={{ minWidth: 'unset' }}>RECON DRONE</span>
+                                <div className="dpad">
+                                    <button className="dpad-btn" onClick={() => moveDrone(0, -1)}>▲</button>
+                                    <button className="dpad-btn dpad-empty" />
+                                    <button className="dpad-btn" onClick={() => moveDrone(-1, 0)}>◀</button>
+                                    <button className="dpad-btn dpad-empty" />
+                                    <button className="dpad-btn" onClick={() => moveDrone(1, 0)}>▶</button>
+                                    <button className="dpad-btn dpad-empty" />
+                                    <button className="dpad-btn" onClick={() => moveDrone(0, 1)}>▼</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </React.Fragment>
+            );
         }
 
-        function drawWireframeCube(x, y, z, tile) {
-            const pos = toIso(x, y, z);
-            const topYOffset = zHeightOffset * (tile === TileType.WALL ? 1.2 : 0.2);
-            const topPos = { x: pos.x, y: pos.y - topYOffset };
-
-            ctx.save();
-            ctx.strokeStyle = "#00ffcc";
-            ctx.lineWidth = 1;
-
-            // Bottom Rhombus
-            ctx.beginPath();
-            ctx.moveTo(pos.x, pos.y - tileHeight/2);
-            ctx.lineTo(pos.x + tileWidth/2, pos.y);
-            ctx.lineTo(pos.x, pos.y + tileHeight/2);
-            ctx.lineTo(pos.x - tileWidth/2, pos.y);
-            ctx.closePath();
-            ctx.stroke();
-
-            // Top Rhombus
-            ctx.beginPath();
-            ctx.moveTo(topPos.x, topPos.y - tileHeight/2);
-            ctx.lineTo(topPos.x + tileWidth/2, topPos.y);
-            ctx.lineTo(topPos.x, topPos.y + tileHeight/2);
-            ctx.lineTo(topPos.x - tileWidth/2, topPos.y);
-            ctx.closePath();
-            ctx.stroke();
-
-            // Connecting Vertical Struts
-            ctx.beginPath();
-            ctx.moveTo(pos.x - tileWidth/2, pos.y);
-            ctx.lineTo(topPos.x - tileWidth/2, topPos.y);
-
-            ctx.moveTo(pos.x + tileWidth/2, pos.y);
-            ctx.lineTo(topPos.x + tileWidth/2, topPos.y);
-
-            ctx.moveTo(pos.x, pos.y - tileHeight/2);
-            ctx.lineTo(topPos.x, topPos.y - tileHeight/2);
-
-            ctx.moveTo(pos.x, pos.y + tileHeight/2);
-            ctx.lineTo(topPos.x, topPos.y + tileHeight/2);
-            ctx.stroke();
-
-            ctx.restore();
-        }
-
-        // Draw Drone Player Avatar
-        function drawDrone() {
-            // Check matching active visual level
-            if (viewMode === 'ISOLATED' && Math.floor(drone.z) !== activeZ) return;
-
-            const pos = toIso(drone.x, drone.y, drone.z);
-            const floatOffset = Math.sin(Date.now() / 200) * 5;
-            const dy = pos.y - 12 + floatOffset;
-
-            ctx.save();
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = "#00ffff";
-
-            // Glowing blue core engine disk
-            ctx.fillStyle = "rgba(0, 255, 255, 0.4)";
-            ctx.strokeStyle = "#00ffff";
-            ctx.beginPath();
-            ctx.ellipse(pos.x, dy, 12, 6, 0, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-
-            // Top rotor casing pod
-            ctx.fillStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.arc(pos.x, dy - 5, 4, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Propeller blades line
-            const angle = Date.now() / 40;
-            ctx.lineWidth = 1.5;
-            ctx.strokeStyle = "#8b949e";
-            ctx.beginPath();
-            ctx.moveTo(pos.x - Math.cos(angle) * 14, dy - 5 - Math.sin(angle) * 4);
-            ctx.lineTo(pos.x + Math.cos(angle) * 14, dy - 5 + Math.sin(angle) * 4);
-            ctx.stroke();
-
-            // Shadow ring projected directly onto the isometric floor tile below the drone
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-            const floorPos = toIso(drone.x, drone.y, Math.floor(drone.z));
-            ctx.beginPath();
-            ctx.ellipse(floorPos.x, floorPos.y, 8, 4, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.restore();
-        }
-
-        // Joystick Move Drone Handler
-        function moveDrone(dx, dy) {
-            const nextX = drone.x + dx * 0.5;
-            const nextY = drone.y + dy * 0.5;
-
-            // Bounds constraints
-            if (nextX >= 0 && nextX <= gridCols && nextY >= 0 && nextY <= gridRows) {
-                drone.x = nextX;
-                drone.y = nextY;
-            }
-            draw();
-        }
-
-        // Support keyboard WASD controls
-        window.addEventListener("keydown", (e) => {
-            switch(e.key.toLowerCase()) {
-                case 'w': moveDrone(0, -1); break;
-                case 's': moveDrone(0, 1); break;
-                case 'a': moveDrone(-1, 0); break;
-                case 'd': moveDrone(1, 0); break;
-                case 'q': 
-                    if (activeZ < 3) setZLevel(activeZ + 1);
-                    break;
-                case 'e':
-                    if (activeZ > 0) setZLevel(activeZ - 1);
-                    break;
-            }
-        });
-
-        // Loop animation ticker
-        setInterval(() => {
-            draw();
-        }, 1000 / 60);
-
-        // Initial launch size setup
-        setTimeout(() => {
-            resizeCanvas();
-        }, 100);
+        const root = ReactDOM.createRoot(document.getElementById("root"));
+        root.render(<App />);
     </script>
 </body>
 </html>
