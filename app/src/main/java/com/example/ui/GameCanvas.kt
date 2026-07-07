@@ -49,6 +49,57 @@ fun GameCanvas(
     // Reusable Path to avoid allocation in critical render path
     val drawPath = remember { Path() }
 
+    // Reusable Paints for Tactical Overlay text rendering
+    val coordPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#AA00FFCC") // Semi-trans cyan
+            textSize = 10f
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
+    
+    val elevationPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#80BB99FF") // Semi-trans lavender
+            textSize = 9f
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
+
+    val npcPatrolPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#FF00FF66") // Neon green
+            textSize = 10f
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
+
+    val npcSuspiciousPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#FFFFCC00") // Amber
+            textSize = 10f
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
+
+    val npcAlertedPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.parseColor("#FFFF3366") // Red
+            textSize = 10f
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+    }
+
     // Helper projection function
     fun toIso(x: Float, y: Float, z: Float): Offset {
         val screenX = (x - y) * tileHalfWidth
@@ -147,6 +198,22 @@ fun GameCanvas(
                     if (isExplored) {
                         drawIsoStructures(drawPath, isoX, isoY, tileHalfWidth, tileHalfHeight, zHeightOffset, tile)
                     }
+
+                    // Tactical overlay grid coordinates & elevation
+                    if (viewModel.isTacticalOverlayActive && tile != TileType.EMPTY && isExplored) {
+                        drawContext.canvas.nativeCanvas.drawText(
+                            "[$x,$y]",
+                            isoX,
+                            isoY - 1f,
+                            coordPaint
+                        )
+                        drawContext.canvas.nativeCanvas.drawText(
+                            "H:${viewModel.currentZLevel * 3}m",
+                            isoX,
+                            isoY + 11f,
+                            elevationPaint
+                        )
+                    }
                 }
             }
 
@@ -201,6 +268,41 @@ fun GameCanvas(
 
                 val enemyIso = toIso(enemy.pos.x, enemy.pos.y, enemy.pos.z)
                 drawEnemyCharacter(enemyIso, enemy, zHeightOffset)
+
+                // Tactical NPC alert status icon/badge overlay
+                if (viewModel.isTacticalOverlayActive) {
+                    val badgeY = enemyIso.y - 58f
+                    val badgeW = 90f
+                    val badgeH = 15f
+                    val (badgeColor, text, paint) = when (enemy.alertState) {
+                        AlertState.PATROLLING -> Triple(Color(0xFF00FF66), "SECURE", npcPatrolPaint)
+                        AlertState.SUSPICIOUS -> Triple(Color(0xFFFFCC00), "SUSP: ${enemy.alertMeter.toInt()}%", npcSuspiciousPaint)
+                        AlertState.ALERTED -> Triple(Color(0xFFFF0033), "▲ ENGAGED", npcAlertedPaint)
+                    }
+
+                    // Draw capsule backdrop
+                    drawRoundRect(
+                        color = Color(0xCC070B0E),
+                        topLeft = Offset(enemyIso.x - badgeW / 2f, badgeY - badgeH / 2f),
+                        size = Size(badgeW, badgeH),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f)
+                    )
+                    drawRoundRect(
+                        color = badgeColor.copy(alpha = 0.8f),
+                        topLeft = Offset(enemyIso.x - badgeW / 2f, badgeY - badgeH / 2f),
+                        size = Size(badgeW, badgeH),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f),
+                        style = Stroke(width = 1f)
+                    )
+
+                    // Draw centered status text
+                    drawContext.canvas.nativeCanvas.drawText(
+                        text,
+                        enemyIso.x,
+                        badgeY + 4f,
+                        paint
+                    )
+                }
             }
 
             // 6. Draw Player Avatar

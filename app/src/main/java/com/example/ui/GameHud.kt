@@ -167,6 +167,31 @@ fun GameHud(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("EQUIP", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = ImmersiveAmber)
                     }
+
+                    // Tactical overlay toggle button
+                    val isTacticalOn = viewModel.isTacticalOverlayActive
+                    Button(
+                        onClick = { viewModel.toggleTacticalOverlay() },
+                        colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader),
+                        border = BorderStroke(1.dp, if (isTacticalOn) ImmersiveGreen else ImmersiveSlateMuted),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        modifier = Modifier.height(34.dp).testTag("hud_tactical_overlay_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = "Tactical Overlay",
+                            tint = if (isTacticalOn) ImmersiveGreen else ImmersiveSlateLight,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "TACTICAL",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isTacticalOn) ImmersiveGreen else ImmersiveSlateLight
+                        )
+                    }
                 }
             }
         }

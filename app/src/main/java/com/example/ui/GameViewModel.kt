@@ -72,6 +72,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     var isHackingActive by mutableStateOf(false)
         private set
 
+    var isTacticalOverlayActive by mutableStateOf(false)
+        private set
+
     var hackTerminalPos by mutableStateOf<GridPos?>(null)
         private set
 
@@ -100,6 +103,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     // Track last move direction for attacks and skills
     private var lastMoveX: Float = 1.0f
     private var lastMoveY: Float = 0.0f
+    private var lastFootstepTime: Long = 0L
 
     init {
         generateLevels()
@@ -586,6 +590,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
                     if (enemy.alertMeter >= 100f && enemy.alertState != AlertState.ALERTED) {
                         enemy.alertState = AlertState.ALERTED
+                        AudioManager.playAlert()
                         logToConsole("ALERT! ${enemy.name} ENGAGED")
                     }
                     enemy.lastKnownPlayerPos = player.pos.copy()
@@ -627,6 +632,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     val damage = 15f
                     player.health = (player.health - damage).coerceAtLeast(0f)
                     enemy.attackCooldown = 50 // frames
+                    AudioManager.playAttack()
                     logToConsole("DAMAGE! MELEE HIT FROM ${enemy.name}: -15HP")
 
                     if (player.health <= 0f) {
@@ -638,6 +644,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     // Ranged blast from drone
                     player.health = (player.health - 10f).coerceAtLeast(0f)
                     enemy.attackCooldown = 75
+                    AudioManager.playLaser()
                     logToConsole("DAMAGE! PULSE SHOT BY ${enemy.name}: -10HP")
 
                     if (player.health <= 0f) {
@@ -820,6 +827,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             player.xp -= xpNeeded
             player.level++
             player.skillPoints += 2
+            AudioManager.playLevelUp()
             logToConsole("CYBER SYSTEM UPGRADED: LEVEL ${player.level}! +2 SP")
             saveGameProgress()
         }
@@ -920,6 +928,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             val py = player.pos.y.toInt()
             val tile = map.getTile(px, py)
 
+            // Play footstep sounds with rate limiting based on sneaking status
+            val now = System.currentTimeMillis()
+            val stepInterval = if (player.isSneaking) 550L else 320L
+            if (now - lastFootstepTime >= stepInterval) {
+                AudioManager.playFootstep(sneaking = player.isSneaking)
+                lastFootstepTime = now
+            }
+
             // 2. Elevation Layers: check if player walked off a ledge onto empty space
             if (!tile.isWalkable && currentZLevel > 0) {
                 val mapBelow = gameLevels[currentZLevel - 1]
@@ -957,7 +973,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleSneak() {
         player.isSneaking = !player.isSneaking
+        AudioManager.playStealthToggle(player.isSneaking)
         logToConsole("STEALTH INGRESS: ${if (player.isSneaking) "ACTIVE (QUIET)" else "INACTIVE (LOUD)"}")
+    }
+
+    fun toggleTacticalOverlay() {
+        isTacticalOverlayActive = !isTacticalOverlayActive
+        AudioManager.playInteract()
+        logToConsole("TACTICAL OVERLAY: ${if (isTacticalOverlayActive) "ACTIVE" else "INACTIVE"}")
     }
 
     fun executeAttack() {
@@ -993,10 +1016,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             activeProjectiles.add(Pair(player.pos.copy(), Point3D(dirX, dirY, 0f)))
+            AudioManager.playLaser()
             logToConsole("PLASMA CHARGE FIRED")
         } else {
             // Melee Swipe
             var hitAny = false
+            var triggeredBackstab = false
             for (enemy in enemies) {
                 if (enemy.isDead || enemy.pos.z.toInt() != currentZLevel) continue
 
@@ -1016,6 +1041,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
                     hitAny = true
                     if (isBackstab) {
+                        triggeredBackstab = true
                         logToConsole("CRITICAL SILENT BACKSTAB! -${dmg.toInt()}HP")
                     } else {
                         logToConsole("SWIPE HIT ${enemy.name}: -${dmg.toInt()}HP")
@@ -1026,11 +1052,19 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                         player.xp += 30
                         player.credits += 40
                         checkPlayerLevelUp()
+                        AudioManager.playCreditLoot()
                         logToConsole("TARGET ELIMINATED: +40C +30XP")
                     }
                 }
             }
-            if (!hitAny) {
+            if (hitAny) {
+                if (triggeredBackstab) {
+                    AudioManager.playBackstab()
+                } else {
+                    AudioManager.playAttack()
+                }
+            } else {
+                AudioManager.playAttack()
                 logToConsole("SWIPE MELEE ATTACK: MISSED")
             }
         }
@@ -1048,6 +1082,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             if (currentZLevel < 3) {
                 currentZLevel++
                 player.pos.z = currentZLevel.toFloat()
+                AudioManager.playLadder(ascending = true)
                 logToConsole("ASCENDING SHAFT TO LEVEL Z=$currentZLevel")
                 // Reposition player nicely on new level ladder
                 updateExplorationAtPlayer()
@@ -1057,6 +1092,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             if (currentZLevel > 0) {
                 currentZLevel--
                 player.pos.z = currentZLevel.toFloat()
+                AudioManager.playLadder(ascending = false)
                 logToConsole("DESCENDING SHAFT TO LEVEL Z=$currentZLevel")
                 updateExplorationAtPlayer()
                 return
@@ -1078,6 +1114,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     isHackingActive = true
                     hackProgress = 0f
                     hackTerminalPos = GridPos(tx, ty, currentZLevel)
+                    AudioManager.playInteract()
                     logToConsole("UPLINK DOCKED. DECRYPTING NODE ENCRYPTION...")
                     return
                 } else if (tile == TileType.BARREL_EXPLOSIVE) {
@@ -1128,6 +1165,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 if (map.getTile(targetX.toInt(), targetY.toInt()).isWalkable) {
                     player.pos.x = targetX
                     player.pos.y = targetY
+                    AudioManager.playBackstab() // Cool high voltage swoosh for critical dash strike!
                     logToConsole("KAZE DASH ACTIVATED: CRITICAL STRIKE LOADED")
                     
                     // Damage any enemies passed through (midpoint and endpoint checks)
@@ -1178,6 +1216,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                         enemy.attackCooldown = 200 // massive stun cooldown
                     }
                 }
+                AudioManager.playAlert() // Alarm shutdown glitch chime
                 logToConsole("EMP COMPLETED: ALL LOCAL GATE LATTICES DESTROYED")
             }
             "ghost_smoke" -> { // Smoke Bomb
@@ -1195,6 +1234,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                         enemy.lastKnownPlayerPos = null
                     }
                 }
+                AudioManager.playStealthToggle(isActive = false) // Chaff dispersion swoosh
                 logToConsole("CHAFF BOMB: LOCAL SENTRY MATRIX RE-DAMPENED")
             }
             "ghost_ultimate" -> { // Phantom Matrix (Invisibility)
@@ -1206,6 +1246,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 player.energy -= cost
                 player.isInvisible = true
                 player.invisibleTimer = 10.0f
+                AudioManager.playStealthToggle(isActive = true) // Phase cloak hum!
                 logToConsole("PHANTOM MATRIX INVISIBILITY CLOAK DEPLOYED")
             }
             else -> {

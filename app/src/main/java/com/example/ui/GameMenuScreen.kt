@@ -190,6 +190,32 @@ fun GameMenuScreen(
                     )
                 }
             }
+
+            // Audio Status Toggle
+            var isAudioMuted by remember { mutableStateOf(AudioManager.isMuted) }
+            Button(
+                onClick = {
+                    AudioManager.isMuted = !AudioManager.isMuted
+                    isAudioMuted = AudioManager.isMuted
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.5f)),
+                border = BorderStroke(1.dp, if (isAudioMuted) ImmersiveRed.copy(alpha = 0.8f) else ImmersiveLavender.copy(alpha = 0.8f)),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("menu_audio_mute_button")
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (isAudioMuted) "🔇 AUDIO ENGINE: MUTED" else "🔊 AUDIO ENGINE: ACTIVE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isAudioMuted) ImmersiveRed else ImmersiveLavender,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
         }
 
         // Bottom Decorative Info Label
