@@ -270,16 +270,34 @@ fun GameCanvas(
                 drawEnemyCharacter(enemyIso, enemy, zHeightOffset)
 
                 // Tactical NPC alert status icon/badge overlay
-                if (viewModel.isTacticalOverlayActive) {
+                if (viewModel.isTacticalOverlayActive || enemy.alertState != AlertState.PATROLLING) {
                     val badgeY = enemyIso.y - 58f
-                    val badgeW = 90f
+                    val badgeW = 100f
                     val badgeH = 15f
                     val (badgeColor, text, paint) = when (enemy.alertState) {
-                        AlertState.PATROLLING -> Triple(Color(0xFF00FF66), "SECURE", npcPatrolPaint)
-                        AlertState.SUSPICIOUS -> Triple(Color(0xFFFFCC00), "SUSP: ${enemy.alertMeter.toInt()}%", npcSuspiciousPaint)
-                        AlertState.ALERTED -> Triple(Color(0xFFFF0033), "▲ ENGAGED", npcAlertedPaint)
+                        AlertState.PATROLLING -> {
+                            if (enemy.isSearching) {
+                                Triple(Color(0xFF00FF66), "■ SCANNING", npcPatrolPaint)
+                            } else {
+                                Triple(Color(0xFF00FF66), "● SECURE", npcPatrolPaint)
+                            }
+                        }
+                        AlertState.SUSPICIOUS -> {
+                            if (enemy.isSearching) {
+                                Triple(Color(0xFFFFCC00), "🔎 SEARCHING", npcSuspiciousPaint)
+                            } else {
+                                Triple(Color(0xFFFFCC00), "⚡ SUSP: ${enemy.alertMeter.toInt()}%", npcSuspiciousPaint)
+                            }
+                        }
+                        AlertState.ALERTED -> {
+                            if (enemy.hasLostTargetInAggro) {
+                                Triple(Color(0xFFFF3366), "⚠️ LOST: SEARCH", npcAlertedPaint)
+                            } else {
+                                Triple(Color(0xFFFF3366), "▲ ENGAGED", npcAlertedPaint)
+                            }
+                        }
                     }
-
+ 
                     // Draw capsule backdrop
                     drawRoundRect(
                         color = Color(0xCC070B0E),
@@ -294,7 +312,7 @@ fun GameCanvas(
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f),
                         style = Stroke(width = 1f)
                     )
-
+ 
                     // Draw centered status text
                     drawContext.canvas.nativeCanvas.drawText(
                         text,

@@ -363,7 +363,17 @@ data class Enemy(
     var lastKnownPlayerPos: Point3D? = null,
     var suspicionTimer: Float = 0f, // Investigations countdown
     var attackCooldown: Int = 0,
-    var isDead: Boolean = false
+    var isDead: Boolean = false,
+    
+    // New fields for robust state-machine behaviors:
+    var pauseTimer: Float = 0f, // Pausing/waiting at patrol waypoints
+    var scanAngleOffset: Float = 0f, // Angle offset for vision sweeps
+    var scanDirection: Int = 1, // 1 for right, -1 for left
+    var basePatrolAngle: Float = 0f, // Angle when starting a scan sweep
+    var isSearching: Boolean = false, // True if doing a visual sweep
+    var searchTimer: Float = 0f, // Search timer at target/sound locations
+    var hasLostTargetInAggro: Boolean = false, // True if target lost during active AGGRO
+    var aggroLostSearchTimer: Float = 0f // Active search timer at last known position
 ) {
     fun getVisionConeAngle(): Float = when (alertState) {
         AlertState.PATROLLING -> 1.05f // ~60 degrees

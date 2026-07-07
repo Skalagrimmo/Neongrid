@@ -14,6 +14,10 @@ import com.example.ui.GameViewModel
 import com.example.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
+  override fun getAttributionTag(): String? {
+    return "audio"
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()

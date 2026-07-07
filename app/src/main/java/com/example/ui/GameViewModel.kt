@@ -578,6 +578,18 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 val isPlayerVisible = checkPlayerVisibility(enemy, dist)
 
                 if (isPlayerVisible) {
+                    // Reset lost target flags since player is spotted
+                    if (enemy.hasLostTargetInAggro) {
+                        enemy.hasLostTargetInAggro = false
+                        enemy.aggroLostSearchTimer = 0f
+                        logToConsole("RE-ENGAGED: ${enemy.name} RE-SPOTTED TARGET")
+                    }
+                    if (enemy.isSearching && enemy.alertState != AlertState.ALERTED) {
+                        enemy.isSearching = false
+                        enemy.searchTimer = 0f
+                        enemy.pauseTimer = 0f
+                    }
+
                     // Vision Alert Meter goes up
                     val rate = when (enemy.alertState) {
                         AlertState.PATROLLING -> 45f
@@ -588,32 +600,48 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     val factor = player.getStealthFactor()
                     enemy.alertMeter = (enemy.alertMeter + rate * factor * dt).coerceAtMost(100f)
 
+                    // If alert meter starts rising in patrol state, elevate state to suspicious (investigate)
+                    if (enemy.alertState == AlertState.PATROLLING && enemy.alertMeter > 25f) {
+                        enemy.alertState = AlertState.SUSPICIOUS
+                        logToConsole("SUSPICIOUS: ${enemy.name} DETECTED MINOR ANOMALY")
+                    }
+
                     if (enemy.alertMeter >= 100f && enemy.alertState != AlertState.ALERTED) {
                         enemy.alertState = AlertState.ALERTED
+                        enemy.hasLostTargetInAggro = false
+                        enemy.aggroLostSearchTimer = 0f
                         AudioManager.playAlert()
                         logToConsole("ALERT! ${enemy.name} ENGAGED")
                     }
                     enemy.lastKnownPlayerPos = player.pos.copy()
                 } else {
-                    // Decay alert meter
+                    // Player is NOT visible: handle alert decay & search timers
                     if (enemy.alertState != AlertState.ALERTED) {
-                        enemy.alertMeter = (enemy.alertMeter - 15f * dt).coerceAtLeast(0f)
-                        if (enemy.alertMeter <= 0f && enemy.alertState == AlertState.SUSPICIOUS) {
-                            enemy.alertState = AlertState.PATROLLING
+                        // For Patrolling and Suspicious, decay alert meter if not currently searching
+                        if (!enemy.isSearching) {
+                            enemy.alertMeter = (enemy.alertMeter - 15f * dt).coerceAtLeast(0f)
+                            if (enemy.alertMeter <= 0f && enemy.alertState == AlertState.SUSPICIOUS) {
+                                enemy.alertState = AlertState.PATROLLING
+                            }
                         }
                     } else {
-                        // Alerted but lost player - counts down suspicion timer
-                        enemy.suspicionTimer += dt
-                        if (enemy.suspicionTimer > 5.0f) {
-                            enemy.alertState = AlertState.SUSPICIOUS
-                            enemy.alertMeter = 50f
-                            enemy.suspicionTimer = 0f
-                            logToConsole("${enemy.name} LOST TARGET. SEARCHING...")
+                        // In Alerted/Aggro mode, but lost line of sight:
+                        // Move target state remains Alerted until they arrive at lastKnownPlayerPos and search
+                        if (!enemy.hasLostTargetInAggro) {
+                            // If they are not yet close to the last known position, we count down a generic timer
+                            // to avoid infinite chasing in case of anomalies.
+                            enemy.suspicionTimer += dt
+                            if (enemy.suspicionTimer > 8.0f) {
+                                enemy.alertState = AlertState.SUSPICIOUS
+                                enemy.alertMeter = 50f
+                                enemy.suspicionTimer = 0f
+                                logToConsole("${enemy.name} COMBAT CONTACT LOST. SCANNING BROAD REGION...")
+                            }
                         }
                     }
                 }
 
-                // Noise detection
+                // Noise detection: hearing disturbances breaks calm and causes immediate investigation
                 for (ripple in noiseRipples) {
                     if (ripple.pos.z.toInt() == enemy.pos.z.toInt()) {
                         val dToRipple = enemy.pos.distanceTo(ripple.pos)
@@ -621,12 +649,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                             enemy.alertState = AlertState.SUSPICIOUS
                             enemy.alertMeter = max(enemy.alertMeter, 40f)
                             enemy.lastKnownPlayerPos = ripple.pos.copy()
-                            logToConsole("${enemy.name} HEARD SOUND RIPPLE")
+                            
+                            // Interrupted current behaviors to head to noise immediately
+                            enemy.isSearching = false
+                            enemy.pauseTimer = 0f
+                            enemy.searchTimer = 0f
+                            logToConsole("${enemy.name} HEARD SOUND RIPPLE AT GRID POS")
                         }
                     }
                 }
 
-                // Combat attacking
+                // Combat attacking (Melee or Ranged depending on enemy type)
                 if (enemy.alertState == AlertState.ALERTED && dist < 1.5f && enemy.attackCooldown <= 0) {
                     // Attack Player!
                     val damage = 15f
@@ -733,45 +766,141 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             AlertState.ALERTED -> 2.6f
         }
 
-        val target = when (enemy.alertState) {
-            AlertState.ALERTED -> {
-                // Chase player if on same level
-                if (player.pos.z.toInt() == enemy.pos.z.toInt() && !player.isInvisible) {
-                    player.pos
+        when (enemy.alertState) {
+            AlertState.PATROLLING -> {
+                if (enemy.isSearching) {
+                    // Paused at a patrol waypoint, scanning/sweeping vision cone
+                    enemy.pauseTimer -= dt
+                    enemy.searchTimer += dt
+                    
+                    // Pan back and forth within ~35 degrees (0.6 radians) of arrival heading
+                    enemy.directionAngle = enemy.basePatrolAngle + sin(enemy.searchTimer * 2.5f) * 0.6f
+                    
+                    if (enemy.pauseTimer <= 0f) {
+                        enemy.isSearching = false
+                        enemy.pauseTimer = 0f
+                        // Select next patrol index
+                        if (enemy.patrolRoute.isNotEmpty()) {
+                            enemy.patrolIndex = (enemy.patrolIndex + 1) % enemy.patrolRoute.size
+                        }
+                    }
                 } else {
-                    enemy.lastKnownPlayerPos ?: (enemy.patrolRoute.getOrNull(enemy.patrolIndex) ?: enemy.pos)
+                    // Moving along patrol route
+                    val target = enemy.patrolRoute.getOrNull(enemy.patrolIndex) ?: enemy.pos
+                    val dx = target.x - enemy.pos.x
+                    val dy = target.y - enemy.pos.y
+                    val d = sqrt(dx * dx + dy * dy)
+
+                    if (d > 0.15f) {
+                        enemy.pos.x += (dx / d) * speed * dt
+                        enemy.pos.y += (dy / d) * speed * dt
+                        enemy.directionAngle = atan2(dy, dx)
+                    } else if (enemy.patrolRoute.isNotEmpty()) {
+                        // Waypoint reached! Initiate scanning behavior
+                        enemy.isSearching = true
+                        enemy.pauseTimer = 2.0f // Wait and scan for 2.0s
+                        enemy.searchTimer = 0f
+                        enemy.basePatrolAngle = enemy.directionAngle
+                    }
                 }
             }
             AlertState.SUSPICIOUS -> {
-                // Move to investigate sound or last seen pos
-                enemy.lastKnownPlayerPos ?: (enemy.patrolRoute.getOrNull(enemy.patrolIndex) ?: enemy.pos)
-            }
-            AlertState.PATROLLING -> {
-                if (enemy.patrolRoute.isNotEmpty()) {
-                    enemy.patrolRoute[enemy.patrolIndex]
+                if (enemy.isSearching) {
+                    // Suspicious investigation sweep at target/sound point
+                    enemy.suspicionTimer -= dt
+                    enemy.searchTimer += dt
+                    
+                    // Pan widely back and forth (~70 degrees / 1.2 radians)
+                    enemy.directionAngle = enemy.basePatrolAngle + sin(enemy.searchTimer * 3.0f) * 1.2f
+                    
+                    if (enemy.suspicionTimer <= 0f) {
+                        enemy.isSearching = false
+                        enemy.suspicionTimer = 0f
+                        enemy.alertState = AlertState.PATROLLING
+                        enemy.alertMeter = 0f
+                        enemy.lastKnownPlayerPos = null
+                        logToConsole("${enemy.name} SEARCH COMPLETED. NO HOSTILES DETECTED. RESUMING PATROL.")
+                    }
                 } else {
-                    enemy.pos
+                    // Move to investigate sound or last-seen position
+                    val target = enemy.lastKnownPlayerPos ?: (enemy.patrolRoute.getOrNull(enemy.patrolIndex) ?: enemy.pos)
+                    val dx = target.x - enemy.pos.x
+                    val dy = target.y - enemy.pos.y
+                    val d = sqrt(dx * dx + dy * dy)
+
+                    if (d > 0.2f) {
+                        enemy.pos.x += (dx / d) * speed * dt
+                        enemy.pos.y += (dy / d) * speed * dt
+                        enemy.directionAngle = atan2(dy, dx)
+                    } else {
+                        // Arrived at investigation position! Initiate full investigation scan
+                        enemy.isSearching = true
+                        enemy.suspicionTimer = 4.0f // 4 seconds of searching
+                        enemy.searchTimer = 0f
+                        enemy.basePatrolAngle = enemy.directionAngle
+                        logToConsole("${enemy.name} ARRIVED AT SUSPICIOUS SOURCE. SCANNING CODES...")
+                    }
                 }
             }
-        }
+            AlertState.ALERTED -> {
+                val isPlayerVisible = checkPlayerVisibility(enemy, enemy.pos.distanceTo(player.pos)) && 
+                                      player.pos.z.toInt() == enemy.pos.z.toInt() && 
+                                      !player.isInvisible
+                
+                if (isPlayerVisible) {
+                    // Chase player directly
+                    enemy.hasLostTargetInAggro = false
+                    enemy.aggroLostSearchTimer = 0f
+                    enemy.suspicionTimer = 0f
+                    
+                    val target = player.pos
+                    val dx = target.x - enemy.pos.x
+                    val dy = target.y - enemy.pos.y
+                    val d = sqrt(dx * dx + dy * dy)
 
-        val dx = target.x - enemy.pos.x
-        val dy = target.y - enemy.pos.y
-        val d = sqrt(dx * dx + dy * dy)
+                    if (d > 0.15f) {
+                        enemy.pos.x += (dx / d) * speed * dt
+                        enemy.pos.y += (dy / d) * speed * dt
+                        enemy.directionAngle = atan2(dy, dx)
+                    }
+                } else {
+                    // Lost line of sight to player. Head to last known position
+                    val target = enemy.lastKnownPlayerPos ?: enemy.pos
+                    val dx = target.x - enemy.pos.x
+                    val dy = target.y - enemy.pos.y
+                    val d = sqrt(dx * dx + dy * dy)
 
-        if (d > 0.1f) {
-            // Move towards target
-            enemy.pos.x += (dx / d) * speed * dt
-            enemy.pos.y += (dy / d) * speed * dt
-            enemy.directionAngle = atan2(dy, dx)
-        } else if (enemy.alertState == AlertState.PATROLLING && enemy.patrolRoute.isNotEmpty()) {
-            // Cycle patrol point
-            enemy.patrolIndex = (enemy.patrolIndex + 1) % enemy.patrolRoute.size
-        } else if (enemy.alertState == AlertState.SUSPICIOUS) {
-            // Arrived at sound/investigation point, wait and decay alert
-            enemy.alertState = AlertState.PATROLLING
-            enemy.alertMeter = 0f
-            logToConsole("${enemy.name} THREAT MINIMIZED. RESUMING PATROL")
+                    if (d > 0.2f && !enemy.hasLostTargetInAggro) {
+                        enemy.pos.x += (dx / d) * speed * dt
+                        enemy.pos.y += (dy / d) * speed * dt
+                        enemy.directionAngle = atan2(dy, dx)
+                    } else {
+                        // Arrived at the spot where player was last seen! Start high-alert search sweep
+                        if (!enemy.hasLostTargetInAggro) {
+                            enemy.hasLostTargetInAggro = true
+                            enemy.aggroLostSearchTimer = 0f
+                            logToConsole("${enemy.name} REACHED LAST KNOWN COORDINATES. INIT COMBAT SWEEP!")
+                        }
+                        
+                        enemy.aggroLostSearchTimer += dt
+                        // Rapid 360-degree rotation search
+                        enemy.directionAngle += dt * 4.5f
+                        
+                        if (enemy.aggroLostSearchTimer > 4.0f) {
+                            // Search timed out! Downgrade to SUSPICIOUS for broad search
+                            enemy.alertState = AlertState.SUSPICIOUS
+                            enemy.alertMeter = 50f
+                            enemy.suspicionTimer = 4.0f
+                            enemy.isSearching = true
+                            enemy.searchTimer = 0f
+                            enemy.basePatrolAngle = enemy.directionAngle
+                            enemy.hasLostTargetInAggro = false
+                            enemy.aggroLostSearchTimer = 0f
+                            logToConsole("${enemy.name} COMBAT SWEEP FAILED. TRANSITIONING TO INVESTIGATION...")
+                        }
+                    }
+                }
+            }
         }
     }
 
