@@ -10,17 +10,26 @@ import com.example.data.GameDatabase
 import com.example.data.GameRepository
 import com.example.data.PlayerSaveState
 import com.example.data.GameStateSerializationService
+import com.example.engine.CombatSystem
+import com.example.engine.LevelManager
+import com.example.engine.MovementSystem
+import com.example.engine.StealthAiSystem
 import com.example.model.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.*
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = GameDatabase.getDatabase(application)
     private val repository = GameRepository(db.saveStateDao())
+
+    val mapSize = 35
+
+    // Modular Systems
+    val levelManager = LevelManager(mapSize)
+    val movementSystem = MovementSystem(levelManager)
+    val stealthAiSystem = StealthAiSystem()
+    val combatSystem = CombatSystem(levelManager)
 
     // Game Screens State
     enum class Screen {
@@ -29,17 +38,25 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         SKILL_TREE,
         LOADOUT,
         CONTROLS,
-        HTML5_CANVAS
+        NATIVE_ISO_CANVAS
     }
 
     var currentScreen by mutableStateOf(Screen.MENU)
         private set
 
+    // Low-Spec Performance Optimization Mode (2012-2013 4-Core Mobile Preset)
+    var isLowSpecPerformanceMode by mutableStateOf(true)
+        private set
+
+    fun togglePerformanceMode() {
+        isLowSpecPerformanceMode = !isLowSpecPerformanceMode
+        logToConsole(if (isLowSpecPerformanceMode) "PERF MODE: 2012-2013 4-CORE OPTIMIZATION ENABLED" else "PERF MODE: 60FPS FULL SHADER ENGAGED")
+    }
+
     // Active Game Entities & State
     var player by mutableStateOf(Player())
         private set
 
-    // Map of ZLevel -> Set of "x,y" coordinates that have been explored/revealed
     var exploredTiles by mutableStateOf(mutableMapOf<Int, Set<String>>())
         private set
 
@@ -53,11 +70,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     var noiseRipples = mutableListOf<NoiseRipple>()
         private set
 
-    // Levels Data Structure
-    var gameLevels = mutableMapOf<Int, GameLevelMap>()
-        private set
+    val gameLevels: Map<Int, GameLevelMap>
+        get() = levelManager.gameLevels
 
-    var currentZLevel by mutableStateOf(1) // Starts at Z=1 (Main Street)
+    var currentZLevel by mutableStateOf(1)
         private set
 
     var currentScore by mutableStateOf(0)
@@ -81,32 +97,54 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     var hackProgress by mutableStateOf(0f)
         private set
 
-    // Debug Dev Console Logs (Matching the visual style in the image)
     var consoleLogs = mutableListOf<String>()
         private set
 
-    // Dynamic Skill Trees (Can be unlocked using skill points)
     var skillNodes by mutableStateOf(SkillNode.getSkillTree())
         private set
 
-    // Active Combat Orbs (Ranged shots)
-    var activeProjectiles = mutableListOf<Pair<Point3D, Point3D>>() // Pair of <Position, Velocity>
-    private set
+    var activeProjectiles = mutableListOf<Pair<Point3D, Point3D>>()
+        private set
 
-    // Game loop tick state for optimized Jetpack Compose recomposition
     var gameTick by mutableStateOf(0L)
         private set
 
-    // Game Loop Job
     private var gameLoopJob: Job? = null
 
-    // Track last move direction for attacks and skills
-    private var lastMoveX: Float = 1.0f
-    private var lastMoveY: Float = 0.0f
-    private var lastFootstepTime: Long = 0L
+    var lastMoveX: Float = 1.0f
+        private set
+    var lastMoveY: Float = 0.0f
+        private set
 
     init {
-        generateLevels()
+        stealthAiSystem.logListener = object : StealthAiSystem.AiLogListener {
+            override fun onLog(message: String) {
+                logToConsole(message)
+            }
+        }
+
+        combatSystem.logListener = object : CombatSystem.CombatLogListener {
+            override fun onLog(message: String) {
+                logToConsole(message)
+            }
+
+            override fun onLevelUp() {
+                saveGameProgress()
+            }
+
+            override fun onGameOver() {
+                isGameOver = true
+                stopGameLoop()
+                logToConsole("CRITICAL COLLAPSE: PLAYER DECEASED")
+            }
+
+            override fun onGameWon() {
+                isGameWon = true
+                stopGameLoop()
+                logToConsole("MISSION ACCOMPLISHED!")
+            }
+        }
+
         resetGameEntities()
         observeSaveState()
         logToConsole("DEV-CONSOLE INITIALIZED")
@@ -126,7 +164,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.saveState.collect { save ->
                 save?.let {
-                    // Map save state into our memory objects
                     val unlockedSet = it.unlockedSkillIdsString.split(",").filter { id -> id.isNotEmpty() }.toSet()
                     val equippedWeapon = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedWeaponId } ?: EquipmentItem.DEFAULT_WEAPON
                     val equippedCore = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedCoreId } ?: EquipmentItem.DEFAULT_CORE
@@ -136,6 +173,22 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     val totalEnergyBoost = equippedWeapon.statBoostEnergy + equippedCore.statBoostEnergy + equippedSystem.statBoostEnergy
                     val loadedMaxHealth = 100f + totalHealthBoost
                     val loadedMaxEnergy = 80f + totalEnergyBoost
+
+                    val restoredQuest = Quest(
+                        id = it.questId,
+                        title = it.questTitle,
+                        description = it.questDescription,
+                        currentProgress = it.questProgress,
+                        targetCount = it.questTargetCount,
+                        isCompleted = it.questCompleted
+                    )
+
+                    val ownedEquipSet = it.inventoryEquipmentIdsString.split(",").filter { id -> id.isNotEmpty() }.toSet()
+                    val restoredInventory = Inventory(
+                        ownedEquipmentIds = if (ownedEquipSet.isEmpty()) setOf("nano_blade", "force_shield", "targeting_chip") else ownedEquipSet,
+                        healthPacks = it.inventoryHealthPacks,
+                        energyCells = it.inventoryEnergyCells
+                    )
 
                     currentZLevel = it.currentZLevel
                     player = player.copy(
@@ -150,11 +203,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                         unlockedSkills = unlockedSet,
                         maxHealth = loadedMaxHealth,
                         maxEnergy = loadedMaxEnergy,
-                        health = loadedMaxHealth,
-                        energy = loadedMaxEnergy
+                        health = it.playerHealth.coerceAtMost(loadedMaxHealth),
+                        energy = it.playerEnergy.coerceAtMost(loadedMaxEnergy),
+                        quest = restoredQuest,
+                        inventory = restoredInventory
                     )
 
-                    // Mark skills as unlocked in the tree
                     skillNodes = skillNodes.map { node ->
                         node.copy(isUnlocked = unlockedSet.contains(node.id))
                     }
@@ -162,7 +216,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     exploredTiles = GameStateSerializationService.deserializeExploration(it.exploredTilesString).toMutableMap()
                     updateExplorationAtPlayer(force = true)
 
-                    logToConsole("SAVE STATE RESTORED: CLVL ${it.level}")
+                    logToConsole("SAVE RESTORED: CLVL ${it.level} | POS (${it.playerPosX.toInt()},${it.playerPosY.toInt()},Z=${it.currentZLevel})")
                 }
             }
         }
@@ -184,10 +238,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 currentZLevel = currentZLevel,
                 playerPosX = player.pos.x,
                 playerPosY = player.pos.y,
-                exploredTilesString = GameStateSerializationService.serializeExploration(exploredTiles)
+                playerHealth = player.health,
+                playerEnergy = player.energy,
+                exploredTilesString = GameStateSerializationService.serializeExploration(exploredTiles),
+                questId = player.quest.id,
+                questTitle = player.quest.title,
+                questDescription = player.quest.description,
+                questProgress = player.quest.currentProgress,
+                questTargetCount = player.quest.targetCount,
+                questCompleted = player.quest.isCompleted,
+                inventoryEquipmentIdsString = player.inventory.ownedEquipmentIds.joinToString(","),
+                inventoryHealthPacks = player.inventory.healthPacks,
+                inventoryEnergyCells = player.inventory.energyCells
             )
             repository.saveGame(save)
-            logToConsole("SYNCING WITH LOCAL SQLITE DB: DONE")
+            logToConsole("ROOM DB PERSISTED: POS & QUEST & INVENTORY")
         }
     }
 
@@ -202,18 +267,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             lastExploredZ = -1
             saveGameProgress()
             resetGameEntities()
-            logToConsole("SQLITE DATABASE SAVES WIPED")
+            logToConsole("ROOM DB SAVES RESET")
         }
     }
 
-    private fun logToConsole(message: String) {
+    fun logToConsole(message: String) {
         if (consoleLogs.size > 8) {
             consoleLogs.removeAt(0)
         }
         consoleLogs.add(message)
     }
 
-    // Reset All levels & dynamic entities
     fun resetGameEntities() {
         isGameOver = false
         isGameWon = false
@@ -223,16 +287,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         enemies.clear()
         noiseRipples.clear()
         activeProjectiles.clear()
-        generateLevels()
+        levelManager.generateLevels()
 
-        // Place Player
         player.pos = Point3D(2f, 2f, 1f)
         player.health = 100f + player.equippedCore.statBoostHealth
         player.maxHealth = 100f + player.equippedCore.statBoostHealth
         player.energy = 80f + player.equippedCore.statBoostEnergy
         player.maxEnergy = 80f + player.equippedCore.statBoostEnergy
 
-        // Populate Enemies for Z=0, Z=1, Z=2, Z=3
         spawnEnemiesForLevel()
         logToConsole("ENTITIES REPOPULATED ON GRID")
     }
@@ -240,238 +302,62 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private fun spawnEnemiesForLevel() {
         enemies.clear()
 
-        // Z=0 (Sewer) Enemies: Drones, patrolling narrow paths
+        // Z=0 Sewers
         enemies.add(
             Enemy(
                 id = "drone_0", name = "Drone SENTROY_0",
-                pos = Point3D(5f, 4f, 0f), type = "SentryDrone", health = 30f, maxHealth = 30f,
-                patrolRoute = listOf(Point3D(5f, 4f, 0f), Point3D(5f, 12f, 0f), Point3D(12f, 12f, 0f), Point3D(12f, 4f, 0f))
+                pos = Point3D(5f, 5f, 0f), type = "SentryDrone", health = 30f, maxHealth = 30f,
+                patrolRoute = listOf(Point3D(5f, 5f, 0f), Point3D(5f, 25f, 0f), Point3D(25f, 25f, 0f), Point3D(25f, 5f, 0f))
             )
         )
         enemies.add(
             Enemy(
                 id = "drone_1", name = "Drone SENTROY_1",
-                pos = Point3D(14f, 6f, 0f), type = "SentryDrone", health = 30f, maxHealth = 30f,
-                patrolRoute = listOf(Point3D(14f, 6f, 0f), Point3D(14f, 15f, 0f), Point3D(8f, 15f, 0f))
+                pos = Point3D(25f, 8f, 0f), type = "SentryDrone", health = 30f, maxHealth = 30f,
+                patrolRoute = listOf(Point3D(25f, 8f, 0f), Point3D(25f, 30f, 0f), Point3D(9f, 30f, 0f))
             )
         )
 
-        // Z=1 (Main Street) Enemies: Sentry guards patrolling street blocks and inside building foyers
+        // Z=1 Main Street
         enemies.add(
             Enemy(
                 id = "sentry_0", name = "Guardsman SYNTROB_0",
-                pos = Point3D(8f, 5f, 1f), type = "Syntrob", health = 60f, maxHealth = 60f,
-                patrolRoute = listOf(Point3D(8f, 5f, 1f), Point3D(15f, 5f, 1f), Point3D(15f, 10f, 1f), Point3D(8f, 10f, 1f))
+                pos = Point3D(12f, 6f, 1f), type = "Syntrob", health = 60f, maxHealth = 60f,
+                patrolRoute = listOf(Point3D(12f, 6f, 1f), Point3D(20f, 6f, 1f), Point3D(20f, 15f, 1f), Point3D(12f, 15f, 1f))
             )
         )
         enemies.add(
             Enemy(
                 id = "sentry_1", name = "Guardsman SYNTROB_1",
-                pos = Point3D(5f, 14f, 1f), type = "Syntrob", health = 60f, maxHealth = 60f,
-                patrolRoute = listOf(Point3D(5f, 14f, 1f), Point3D(10f, 14f, 1f), Point3D(10f, 8f, 1f))
+                pos = Point3D(12f, 25f, 1f), type = "Syntrob", health = 60f, maxHealth = 60f,
+                patrolRoute = listOf(Point3D(12f, 25f, 1f), Point3D(20f, 25f, 1f), Point3D(20f, 12f, 1f))
             )
         )
 
-        // Z=2 (Mezzanine) Enemies: Advanced sentries guarding high platforms and balconies
+        // Z=2 Mezzanine
         enemies.add(
             Enemy(
                 id = "sentry_2", name = "Commando SYNTROB_2",
-                pos = Point3D(4f, 4f, 2f), type = "Syntrob", health = 80f, maxHealth = 80f,
-                patrolRoute = listOf(Point3D(4f, 4f, 2f), Point3D(6f, 4f, 2f), Point3D(6f, 6f, 2f), Point3D(4f, 6f, 2f))
+                pos = Point3D(5f, 5f, 2f), type = "Syntrob", health = 80f, maxHealth = 80f,
+                patrolRoute = listOf(Point3D(5f, 5f, 2f), Point3D(8f, 5f, 2f), Point3D(8f, 8f, 2f), Point3D(5f, 8f, 2f))
             )
         )
         enemies.add(
             Enemy(
                 id = "sentry_3", name = "Elite WATCHER_3",
-                pos = Point3D(14f, 4f, 2f), type = "Sentry", health = 50f, maxHealth = 50f,
-                patrolRoute = listOf(Point3D(14f, 4f, 2f), Point3D(14f, 6f, 2f), Point3D(15f, 6f, 2f), Point3D(15f, 4f, 2f))
+                pos = Point3D(25f, 5f, 2f), type = "Sentry", health = 50f, maxHealth = 50f,
+                patrolRoute = listOf(Point3D(25f, 5f, 2f), Point3D(25f, 9f, 2f), Point3D(28f, 9f, 2f), Point3D(28f, 5f, 2f))
             )
         )
 
-        // Z=3 (Sky Gateway) Boss: Rooftop heavy security mech
+        // Z=3 Sky Gateway Boss
         enemies.add(
             Enemy(
                 id = "boss_heavy", name = "Mech SYNTROY_HEAVY",
-                pos = Point3D(12f, 12f, 3f), type = "Boss", health = 250f, maxHealth = 250f,
-                patrolRoute = listOf(Point3D(12f, 12f, 3f), Point3D(12f, 5f, 3f), Point3D(5f, 5f, 3f), Point3D(5f, 12f, 3f))
+                pos = Point3D(20f, 20f, 3f), type = "Boss", health = 250f, maxHealth = 250f,
+                patrolRoute = listOf(Point3D(20f, 20f, 3f), Point3D(20f, 8f, 3f), Point3D(8f, 8f, 3f), Point3D(8f, 20f, 3f))
             )
         )
-    }
-
-    private fun generateLevels() {
-        gameLevels.clear()
-        val size = 20
-
-        // Z=0 Sewer Grid (Flooded concrete pathways, water drainage channels, columns, ladders to Z=1)
-        val sewerGrid = Array(size) { Array(size) { TileType.WALL } }
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                // Generous concrete drainage pathways
-                if (x == 2 || x == 4 || x == 5 || x == 12 || x == 14 || x == 18 || y == 4 || y == 9 || y == 14 || y == 15) {
-                    sewerGrid[x][y] = TileType.FLOOR
-                }
-            }
-        }
-        
-        // Aligned ladders to climb up into building interiors / streets of Z=1
-        sewerGrid[5][4] = TileType.LADDER_UP   // Rises into Biotech Lab
-        sewerGrid[2][14] = TileType.LADDER_UP  // Rises into Left Street pavement
-        sewerGrid[18][14] = TileType.LADDER_UP // Rises into Right Street pavement
-
-        // Explosive storage barrels in sewer corners
-        sewerGrid[3][4] = TileType.BARREL_EXPLOSIVE
-        sewerGrid[11][14] = TileType.BARREL_EXPLOSIVE
-        sewerGrid[13][9] = TileType.BARREL_EXPLOSIVE
-        
-        gameLevels[0] = GameLevelMap(0, "Z=0 SEWER CANALS", size, size, sewerGrid)
-
-        // Z=1 Main Street Grid (Tactical street layout with three distinct secure buildings)
-        val mainGrid = Array(size) { Array(size) { TileType.WALL } }
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                // Default walkable street pavement
-                if (x in 1..18 && y in 1..18) {
-                    mainGrid[x][y] = TileType.FLOOR
-                }
-                // Bright cyan-glowing roads running through city
-                if (x == 10 || y == 10) {
-                    mainGrid[x][y] = TileType.GRID_ROAD
-                }
-            }
-        }
-
-        // --- BUILDING 1: Biotech Laboratory (Top-Left Sector) ---
-        for (x in 3..7) {
-            for (y in 3..7) {
-                if (x == 3 || x == 7 || y == 3 || y == 7) {
-                    mainGrid[x][y] = TileType.WALL
-                } else {
-                    mainGrid[x][y] = TileType.FLOOR // Lab Interior
-                }
-            }
-        }
-        mainGrid[7][5] = TileType.LASER_GRID // Front secure door guarded by laser
-        mainGrid[8][5] = TileType.TERMINAL   // Console link to hack front door open
-
-        // --- BUILDING 2: Security Headquarters (Top-Right Sector) ---
-        for (x in 12..16) {
-            for (y in 3..7) {
-                if (x == 12 || x == 16 || y == 3 || y == 7) {
-                    mainGrid[x][y] = TileType.WALL
-                } else {
-                    mainGrid[x][y] = TileType.FLOOR // HQ Interior
-                }
-            }
-        }
-        mainGrid[12][5] = TileType.LASER_GRID // Front entrance laser
-        mainGrid[11][5] = TileType.TERMINAL   // Terminal link to unlock HQ front door
-
-        // --- BUILDING 3: Power Grid Station (Bottom-Right Sector) ---
-        for (x in 12..16) {
-            for (y in 12..16) {
-                if (x == 12 || x == 16 || y == 12 || y == 16) {
-                    mainGrid[x][y] = TileType.WALL
-                } else {
-                    mainGrid[x][y] = TileType.FLOOR // Power Core room floor
-                }
-            }
-        }
-        mainGrid[12][14] = TileType.LASER_GRID // Entrance laser
-        mainGrid[11][14] = TileType.TERMINAL   // Core overload hacking node
-
-        // Ladders DOWN to Sewers (Z=0)
-        mainGrid[5][4] = TileType.LADDER_DOWN   // Descent from inside Biotech Lab
-        mainGrid[2][14] = TileType.LADDER_DOWN  // Descent from Left Pavement
-        mainGrid[18][14] = TileType.LADDER_DOWN // Descent from Right Pavement
-
-        // Ladders UP to Mezzanine (Z=2)
-        mainGrid[4][6] = TileType.LADDER_UP   // Climbing from inside Biotech Lab to upper mezzanine balcony
-        mainGrid[14][4] = TileType.LADDER_UP  // Climbing from inside HQ to high level security deck
-        mainGrid[14][14] = TileType.LADDER_UP // Climbing from Power Station to upper platform
-        mainGrid[9][9] = TileType.LADDER_UP   // Outdoor public street access ladder up to suspended steel catwalk bridge
-
-        // Ambient explosive barrels on the streets
-        mainGrid[8][15] = TileType.BARREL_EXPLOSIVE
-        mainGrid[15][15] = TileType.BARREL_EXPLOSIVE
-
-        gameLevels[1] = GameLevelMap(1, "Z=1 MAIN STREET", size, size, mainGrid)
-
-        // Z=2 Mezzanine (Suspended balconies directly above Z=1 buildings connected by narrow catwalk steel skybridges)
-        val mezGrid = Array(size) { Array(size) { TileType.WALL } }
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                // Balcony platform above Biotech Lab (matching coordinates)
-                if (x in 3..7 && y in 3..7) {
-                    mezGrid[x][y] = TileType.FLOOR
-                }
-                // Balcony platform above Security HQ
-                if (x in 12..16 && y in 3..7) {
-                    mezGrid[x][y] = TileType.FLOOR
-                }
-                // Platform deck above Power Grid Station
-                if (x in 12..16 && y in 12..16) {
-                    mezGrid[x][y] = TileType.FLOOR
-                }
-                // Catwalk skybridge crossing high above the main street from Biotech Balcony to Security Deck
-                if (y == 5 && x in 8..11) {
-                    mezGrid[x][y] = TileType.GRID_ROAD
-                }
-                // Connection bridge from catwalk to the street ladder landing
-                if (x == 9 && y in 6..9) {
-                    mezGrid[x][y] = TileType.GRID_ROAD
-                }
-            }
-        }
-        
-        // Aligned descending ladders matching Z=1 up-ladders
-        mezGrid[4][6] = TileType.LADDER_DOWN   // Descent into Biotech Lab floor
-        mezGrid[14][4] = TileType.LADDER_DOWN  // Descent into Security HQ floor
-        mezGrid[14][14] = TileType.LADDER_DOWN // Descent into Power Station floor
-        mezGrid[9][9] = TileType.LADDER_DOWN   // Descent to the street pavement
-
-        // Ascending ladder going up from Biotech Balcony up to Rooftop (Z=3)
-        mezGrid[5][5] = TileType.LADDER_UP
-
-        // Laser grid security barrier blocking balcony passage
-        mezGrid[6][12] = TileType.LASER_GRID
-        mezGrid[5][12] = TileType.TERMINAL
-
-        mezGrid[4][4] = TileType.BARREL_EXPLOSIVE
-
-        gameLevels[2] = GameLevelMap(2, "Z=2 MEZZANINE DECK", size, size, mezGrid)
-
-        // Z=3 Sky Gateway (High altitude helipad, satellite receiver dishes, skylights, and Boss arena)
-        val skyGrid = Array(size) { Array(size) { TileType.WALL } }
-        for (x in 0 until size) {
-            for (y in 0 until size) {
-                // Large flat rooftop helipad area
-                if (x in 3..16 && y in 3..16) {
-                    skyGrid[x][y] = TileType.FLOOR
-                }
-                // Glass skylights that look directly down to Z=2 mezzanine (non-walkable empty spaces)
-                if ((x in 5..6 && y in 3..4) || (x in 13..14 && y in 3..4)) {
-                    skyGrid[x][y] = TileType.EMPTY
-                }
-            }
-        }
-        // Ladder going down to Biotech Balcony at (5, 5)
-        skyGrid[5][5] = TileType.LADDER_DOWN
-
-        // Central goal: Uplink Receiver Exit Portal
-        skyGrid[10][10] = TileType.EXIT_PORTAL
-
-        // Defensive laser gates guarding exit portal
-        skyGrid[10][9] = TileType.LASER_GRID
-        skyGrid[10][11] = TileType.LASER_GRID
-
-        // Decryption terminals at opposite corners of roof to disable the laser fences
-        skyGrid[8][8] = TileType.TERMINAL
-        skyGrid[12][12] = TileType.TERMINAL
-
-        skyGrid[13][5] = TileType.BARREL_EXPLOSIVE
-        skyGrid[5][13] = TileType.BARREL_EXPLOSIVE
-
-        gameLevels[3] = GameLevelMap(3, "Z=3 SKY PORTAL APEX", size, size, skyGrid)
     }
 
     private fun startGameLoop() {
@@ -484,9 +370,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 lastTime = currentTime
 
                 updateGameEntities(deltaTime)
-                gameTick++ // Trigger Compose state read recomposition
-
-                delay(16) // Target ~60 fps
+                gameTick++
+                val targetDelay = if (isLowSpecPerformanceMode) 33L else 16L
+                delay(targetDelay)
             }
         }
     }
@@ -496,55 +382,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         gameLoopJob = null
     }
 
-    // Core Game Update Loop Logic
     private fun updateGameEntities(dt: Float) {
         if (isGameOver || isGameWon) return
 
         // 1. Process Active Projectiles
-        val nextProj = mutableListOf<Pair<Point3D, Point3D>>()
-        for (p in activeProjectiles) {
-            val pos = p.first
-            val vel = p.second
-            val nextX = pos.x + vel.x * 20f * dt
-            val nextY = pos.y + vel.y * 20f * dt
-
-            val nextPos = Point3D(nextX, nextY, pos.z)
-            // Check wall collision or bounds
-            val map = gameLevels[currentZLevel] ?: continue
-            val tile = map.getTile(nextX.toInt(), nextY.toInt())
-            if (tile == TileType.WALL || tile == TileType.EMPTY) {
-                // Hits a wall - detonate if close to explosive barrels or terminals
-                detonateExplosionAt(nextPos)
-                continue
-            }
-
-            // Check enemy collision
-            var hit = false
-            for (enemy in enemies) {
-                if (!enemy.isDead && enemy.pos.z.toInt() == currentZLevel.toInt() && enemy.pos.distanceTo(nextPos) < 1.0f) {
-                    // Deal damage
-                    val dmg = player.getDamage()
-                    enemy.health -= dmg
-                    enemy.alertState = AlertState.ALERTED
-                    enemy.lastKnownPlayerPos = player.pos.copy()
-                    logToConsole("PROJECTILE HIT ${enemy.name}: -${dmg.toInt()}HP")
-                    hit = true
-                    if (enemy.health <= 0) {
-                        enemy.isDead = true
-                        player.xp += 30
-                        player.credits += 40
-                        checkPlayerLevelUp()
-                        logToConsole("TARGET ELIMINATED: +40C +30XP")
-                    }
-                    break
-                }
-            }
-
-            if (!hit) {
-                nextProj.add(Pair(nextPos, vel))
-            }
-        }
-        activeProjectiles = nextProj
+        activeProjectiles = combatSystem.processProjectiles(activeProjectiles, enemies, player, currentZLevel, dt).toMutableList()
 
         // 2. Process Noise Ripples
         val nextRipples = mutableListOf<NoiseRipple>()
@@ -556,7 +398,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
         noiseRipples = nextRipples
 
-        // 3. Process Invisibility Timer
+        // 3. Process Invisibility
         if (player.isInvisible) {
             player.invisibleTimer -= dt
             if (player.invisibleTimer <= 0) {
@@ -565,134 +407,18 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 4. Update Enemy Behaviors (Commandos-Style Patrolling & Alerts)
-        for (enemy in enemies) {
-            if (enemy.isDead) continue
-
-            // Cooldowns
-            if (enemy.attackCooldown > 0) enemy.attackCooldown--
-
-            // Enemy must be on same Z level to see player
-            if (enemy.pos.z.toInt() == currentZLevel) {
-                val dist = enemy.pos.distanceTo(player.pos)
-                val isPlayerVisible = checkPlayerVisibility(enemy, dist)
-
-                if (isPlayerVisible) {
-                    // Reset lost target flags since player is spotted
-                    if (enemy.hasLostTargetInAggro) {
-                        enemy.hasLostTargetInAggro = false
-                        enemy.aggroLostSearchTimer = 0f
-                        logToConsole("RE-ENGAGED: ${enemy.name} RE-SPOTTED TARGET")
-                    }
-                    if (enemy.isSearching && enemy.alertState != AlertState.ALERTED) {
-                        enemy.isSearching = false
-                        enemy.searchTimer = 0f
-                        enemy.pauseTimer = 0f
-                    }
-
-                    // Vision Alert Meter goes up
-                    val rate = when (enemy.alertState) {
-                        AlertState.PATROLLING -> 45f
-                        AlertState.SUSPICIOUS -> 75f
-                        AlertState.ALERTED -> 120f
-                    }
-                    // Stealth factor lowers the accumulation rate
-                    val factor = player.getStealthFactor()
-                    enemy.alertMeter = (enemy.alertMeter + rate * factor * dt).coerceAtMost(100f)
-
-                    // If alert meter starts rising in patrol state, elevate state to suspicious (investigate)
-                    if (enemy.alertState == AlertState.PATROLLING && enemy.alertMeter > 25f) {
-                        enemy.alertState = AlertState.SUSPICIOUS
-                        logToConsole("SUSPICIOUS: ${enemy.name} DETECTED MINOR ANOMALY")
-                    }
-
-                    if (enemy.alertMeter >= 100f && enemy.alertState != AlertState.ALERTED) {
-                        enemy.alertState = AlertState.ALERTED
-                        enemy.hasLostTargetInAggro = false
-                        enemy.aggroLostSearchTimer = 0f
-                        AudioManager.playAlert()
-                        logToConsole("ALERT! ${enemy.name} ENGAGED")
-                    }
-                    enemy.lastKnownPlayerPos = player.pos.copy()
-                } else {
-                    // Player is NOT visible: handle alert decay & search timers
-                    if (enemy.alertState != AlertState.ALERTED) {
-                        // For Patrolling and Suspicious, decay alert meter if not currently searching
-                        if (!enemy.isSearching) {
-                            enemy.alertMeter = (enemy.alertMeter - 15f * dt).coerceAtLeast(0f)
-                            if (enemy.alertMeter <= 0f && enemy.alertState == AlertState.SUSPICIOUS) {
-                                enemy.alertState = AlertState.PATROLLING
-                            }
-                        }
-                    } else {
-                        // In Alerted/Aggro mode, but lost line of sight:
-                        // Move target state remains Alerted until they arrive at lastKnownPlayerPos and search
-                        if (!enemy.hasLostTargetInAggro) {
-                            // If they are not yet close to the last known position, we count down a generic timer
-                            // to avoid infinite chasing in case of anomalies.
-                            enemy.suspicionTimer += dt
-                            if (enemy.suspicionTimer > 8.0f) {
-                                enemy.alertState = AlertState.SUSPICIOUS
-                                enemy.alertMeter = 50f
-                                enemy.suspicionTimer = 0f
-                                logToConsole("${enemy.name} COMBAT CONTACT LOST. SCANNING BROAD REGION...")
-                            }
-                        }
-                    }
-                }
-
-                // Noise detection: hearing disturbances breaks calm and causes immediate investigation
-                for (ripple in noiseRipples) {
-                    if (ripple.pos.z.toInt() == enemy.pos.z.toInt()) {
-                        val dToRipple = enemy.pos.distanceTo(ripple.pos)
-                        if (dToRipple <= ripple.radius && enemy.alertState != AlertState.ALERTED) {
-                            enemy.alertState = AlertState.SUSPICIOUS
-                            enemy.alertMeter = max(enemy.alertMeter, 40f)
-                            enemy.lastKnownPlayerPos = ripple.pos.copy()
-                            
-                            // Interrupted current behaviors to head to noise immediately
-                            enemy.isSearching = false
-                            enemy.pauseTimer = 0f
-                            enemy.searchTimer = 0f
-                            logToConsole("${enemy.name} HEARD SOUND RIPPLE AT GRID POS")
-                        }
-                    }
-                }
-
-                // Combat attacking (Melee or Ranged depending on enemy type)
-                if (enemy.alertState == AlertState.ALERTED && dist < 1.5f && enemy.attackCooldown <= 0) {
-                    // Attack Player!
-                    val damage = 15f
-                    player.health = (player.health - damage).coerceAtLeast(0f)
-                    enemy.attackCooldown = 50 // frames
-                    AudioManager.playAttack()
-                    logToConsole("DAMAGE! MELEE HIT FROM ${enemy.name}: -15HP")
-
-                    if (player.health <= 0f) {
-                        isGameOver = true
-                        stopGameLoop()
-                        logToConsole("CRITICAL COLLAPSE: PLAYER DECEASED")
-                    }
-                } else if (enemy.alertState == AlertState.ALERTED && dist in 1.5f..6.5f && enemy.attackCooldown <= 0 && enemy.type == "SentryDrone") {
-                    // Ranged blast from drone
-                    player.health = (player.health - 10f).coerceAtLeast(0f)
-                    enemy.attackCooldown = 75
-                    AudioManager.playLaser()
-                    logToConsole("DAMAGE! PULSE SHOT BY ${enemy.name}: -10HP")
-
-                    if (player.health <= 0f) {
-                        isGameOver = true
-                        stopGameLoop()
-                        logToConsole("CRITICAL COLLAPSE: PLAYER DECEASED")
-                    }
-                }
+        // 4. Update Enemy Behaviors & Stealth AI
+        val currentLevelMap = levelManager.getLevelMap(currentZLevel)
+        stealthAiSystem.updateEnemies(enemies, player, currentZLevel, noiseRipples, dt, currentLevelMap) { damage ->
+            player.health = (player.health - damage).coerceAtLeast(0f)
+            if (player.health <= 0f) {
+                isGameOver = true
+                stopGameLoop()
+                logToConsole("CRITICAL COLLAPSE: PLAYER DECEASED")
             }
-
-            // Enemy Patrolling / Movement
-            updateEnemyMovement(enemy, dt)
         }
 
-        // 5. Update active hacking state if hacking
+        // 5. Active Hacking
         if (isHackingActive) {
             hackProgress += dt * 0.35f
             if (hackProgress >= 1f) {
@@ -700,10 +426,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 hackProgress = 0f
                 val hPos = hackTerminalPos
                 if (hPos != null) {
-                    // Disable laser grid nearby!
-                    val map = gameLevels[currentZLevel]
+                    val map = levelManager.getLevelMap(currentZLevel)
                     if (map != null) {
-                        // Look for adjacent Laser Grids and change to Floor
                         for (dx in -1..1) {
                             for (dy in -1..1) {
                                 val tx = hPos.x + dx
@@ -718,392 +442,88 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                             }
                         }
                     }
+
+                    // Update Active Quest Progress
+                    if (!player.quest.isCompleted) {
+                        val newProgress = (player.quest.currentProgress + 1).coerceAtMost(player.quest.targetCount)
+                        val completed = newProgress >= player.quest.targetCount
+                        player.quest = player.quest.copy(
+                            currentProgress = newProgress,
+                            isCompleted = completed
+                        )
+                        logToConsole("ACTIVE QUEST OBJECTIVE: ${player.quest.title} ($newProgress/${player.quest.targetCount})")
+                        if (completed) {
+                            player.credits += 150
+                            player.xp += 200
+                            logToConsole("QUEST COMPLETED! REWARD: +150 CREDITS, +200 XP")
+                        }
+                    }
+                    saveGameProgress()
                 }
             }
         }
 
-        // 6. Regenerate Player Energy
+        // 6. Energy Regeneration
         if (player.energy < player.maxEnergy) {
-            val regenRate = 4.0f // 4 energy units per second base recovery
-            player.energy = (player.energy + regenRate * dt).coerceAtMost(player.maxEnergy)
+            player.energy = (player.energy + 4.0f * dt).coerceAtMost(player.maxEnergy)
         }
 
-        // 7. Force a copy to update the Player state reference so Compose UI detects updates (energy, health, position) fluidly
         player = player.copy()
-    }
-
-    private fun checkPlayerVisibility(enemy: Enemy, dist: Float): Boolean {
-        if (player.isInvisible) return false
-        val visionRange = enemy.getVisionRange()
-        if (dist > visionRange) return false
-
-        // Compute angle to player
-        val dx = player.pos.x - enemy.pos.x
-        val dy = player.pos.y - enemy.pos.y
-        val angleToPlayer = atan2(dy, dx)
-
-        // Find angle difference
-        var diff = abs(angleToPlayer - enemy.directionAngle)
-        while (diff > PI) diff = (2 * PI - diff).toFloat()
-
-        if (diff > enemy.getVisionConeAngle() / 2f) return false
-
-        // Commandos stealth gameplay mechanics:
-        // Inner half (0% to 50% range): Player is always detected if inside the FOV.
-        // Outer half (50% to 100% range): Player is NOT detected if sneaking (crouching).
-        val isInnerZone = dist <= visionRange * 0.5f
-        if (!isInnerZone && player.isSneaking) {
-            return false
-        }
-
-        return true
-    }
-
-    private fun updateEnemyMovement(enemy: Enemy, dt: Float) {
-        val speed = when (enemy.alertState) {
-            AlertState.PATROLLING -> 1.0f
-            AlertState.SUSPICIOUS -> 1.8f
-            AlertState.ALERTED -> 2.6f
-        }
-
-        when (enemy.alertState) {
-            AlertState.PATROLLING -> {
-                if (enemy.isSearching) {
-                    // Paused at a patrol waypoint, scanning/sweeping vision cone
-                    enemy.pauseTimer -= dt
-                    enemy.searchTimer += dt
-                    
-                    // Pan back and forth within ~35 degrees (0.6 radians) of arrival heading
-                    enemy.directionAngle = enemy.basePatrolAngle + sin(enemy.searchTimer * 2.5f) * 0.6f
-                    
-                    if (enemy.pauseTimer <= 0f) {
-                        enemy.isSearching = false
-                        enemy.pauseTimer = 0f
-                        // Select next patrol index
-                        if (enemy.patrolRoute.isNotEmpty()) {
-                            enemy.patrolIndex = (enemy.patrolIndex + 1) % enemy.patrolRoute.size
-                        }
-                    }
-                } else {
-                    // Moving along patrol route
-                    val target = enemy.patrolRoute.getOrNull(enemy.patrolIndex) ?: enemy.pos
-                    val dx = target.x - enemy.pos.x
-                    val dy = target.y - enemy.pos.y
-                    val d = sqrt(dx * dx + dy * dy)
-
-                    if (d > 0.15f) {
-                        enemy.pos.x += (dx / d) * speed * dt
-                        enemy.pos.y += (dy / d) * speed * dt
-                        enemy.directionAngle = atan2(dy, dx)
-                    } else if (enemy.patrolRoute.isNotEmpty()) {
-                        // Waypoint reached! Initiate scanning behavior
-                        enemy.isSearching = true
-                        enemy.pauseTimer = 2.0f // Wait and scan for 2.0s
-                        enemy.searchTimer = 0f
-                        enemy.basePatrolAngle = enemy.directionAngle
-                    }
-                }
-            }
-            AlertState.SUSPICIOUS -> {
-                if (enemy.isSearching) {
-                    // Suspicious investigation sweep at target/sound point
-                    enemy.suspicionTimer -= dt
-                    enemy.searchTimer += dt
-                    
-                    // Pan widely back and forth (~70 degrees / 1.2 radians)
-                    enemy.directionAngle = enemy.basePatrolAngle + sin(enemy.searchTimer * 3.0f) * 1.2f
-                    
-                    if (enemy.suspicionTimer <= 0f) {
-                        enemy.isSearching = false
-                        enemy.suspicionTimer = 0f
-                        enemy.alertState = AlertState.PATROLLING
-                        enemy.alertMeter = 0f
-                        enemy.lastKnownPlayerPos = null
-                        logToConsole("${enemy.name} SEARCH COMPLETED. NO HOSTILES DETECTED. RESUMING PATROL.")
-                    }
-                } else {
-                    // Move to investigate sound or last-seen position
-                    val target = enemy.lastKnownPlayerPos ?: (enemy.patrolRoute.getOrNull(enemy.patrolIndex) ?: enemy.pos)
-                    val dx = target.x - enemy.pos.x
-                    val dy = target.y - enemy.pos.y
-                    val d = sqrt(dx * dx + dy * dy)
-
-                    if (d > 0.2f) {
-                        enemy.pos.x += (dx / d) * speed * dt
-                        enemy.pos.y += (dy / d) * speed * dt
-                        enemy.directionAngle = atan2(dy, dx)
-                    } else {
-                        // Arrived at investigation position! Initiate full investigation scan
-                        enemy.isSearching = true
-                        enemy.suspicionTimer = 4.0f // 4 seconds of searching
-                        enemy.searchTimer = 0f
-                        enemy.basePatrolAngle = enemy.directionAngle
-                        logToConsole("${enemy.name} ARRIVED AT SUSPICIOUS SOURCE. SCANNING CODES...")
-                    }
-                }
-            }
-            AlertState.ALERTED -> {
-                val isPlayerVisible = checkPlayerVisibility(enemy, enemy.pos.distanceTo(player.pos)) && 
-                                      player.pos.z.toInt() == enemy.pos.z.toInt() && 
-                                      !player.isInvisible
-                
-                if (isPlayerVisible) {
-                    // Chase player directly
-                    enemy.hasLostTargetInAggro = false
-                    enemy.aggroLostSearchTimer = 0f
-                    enemy.suspicionTimer = 0f
-                    
-                    val target = player.pos
-                    val dx = target.x - enemy.pos.x
-                    val dy = target.y - enemy.pos.y
-                    val d = sqrt(dx * dx + dy * dy)
-
-                    if (d > 0.15f) {
-                        enemy.pos.x += (dx / d) * speed * dt
-                        enemy.pos.y += (dy / d) * speed * dt
-                        enemy.directionAngle = atan2(dy, dx)
-                    }
-                } else {
-                    // Lost line of sight to player. Head to last known position
-                    val target = enemy.lastKnownPlayerPos ?: enemy.pos
-                    val dx = target.x - enemy.pos.x
-                    val dy = target.y - enemy.pos.y
-                    val d = sqrt(dx * dx + dy * dy)
-
-                    if (d > 0.2f && !enemy.hasLostTargetInAggro) {
-                        enemy.pos.x += (dx / d) * speed * dt
-                        enemy.pos.y += (dy / d) * speed * dt
-                        enemy.directionAngle = atan2(dy, dx)
-                    } else {
-                        // Arrived at the spot where player was last seen! Start high-alert search sweep
-                        if (!enemy.hasLostTargetInAggro) {
-                            enemy.hasLostTargetInAggro = true
-                            enemy.aggroLostSearchTimer = 0f
-                            logToConsole("${enemy.name} REACHED LAST KNOWN COORDINATES. INIT COMBAT SWEEP!")
-                        }
-                        
-                        enemy.aggroLostSearchTimer += dt
-                        // Rapid 360-degree rotation search
-                        enemy.directionAngle += dt * 4.5f
-                        
-                        if (enemy.aggroLostSearchTimer > 4.0f) {
-                            // Search timed out! Downgrade to SUSPICIOUS for broad search
-                            enemy.alertState = AlertState.SUSPICIOUS
-                            enemy.alertMeter = 50f
-                            enemy.suspicionTimer = 4.0f
-                            enemy.isSearching = true
-                            enemy.searchTimer = 0f
-                            enemy.basePatrolAngle = enemy.directionAngle
-                            enemy.hasLostTargetInAggro = false
-                            enemy.aggroLostSearchTimer = 0f
-                            logToConsole("${enemy.name} COMBAT SWEEP FAILED. TRANSITIONING TO INVESTIGATION...")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun detonateExplosionAt(pos: Point3D) {
-        val radius = 2.0f
-        logToConsole("PLASMA BARREL DETONATED!")
-        // Damage enemies
-        for (enemy in enemies) {
-            if (!enemy.isDead && enemy.pos.z.toInt() == pos.z.toInt() && enemy.pos.distanceTo(pos) <= radius) {
-                enemy.health -= 80f
-                enemy.alertState = AlertState.ALERTED
-                enemy.lastKnownPlayerPos = player.pos.copy()
-                logToConsole("${enemy.name} SPLASHED: -80HP")
-                if (enemy.health <= 0) {
-                    enemy.isDead = true
-                    player.xp += 30
-                    player.credits += 40
-                    checkPlayerLevelUp()
-                }
-            }
-        }
-
-        // Damage Player
-        if (player.pos.z.toInt() == pos.z.toInt() && player.pos.distanceTo(pos) <= radius) {
-            player.health = (player.health - 40f).coerceAtLeast(0f)
-            logToConsole("DANGER! SPLASH DAMAGE DEALT: -40HP")
-            if (player.health <= 0) {
-                isGameOver = true
-                stopGameLoop()
-            }
-        }
-
-        // Clear laser gates or barrels adjacent
-        val map = gameLevels[pos.z.toInt()]
-        if (map != null) {
-            val gx = pos.x.toInt()
-            val gy = pos.y.toInt()
-            for (dx in -1..1) {
-                for (dy in -1..1) {
-                    val tx = gx + dx
-                    val ty = gy + dy
-                    if (map.getTile(tx, ty) == TileType.LASER_GRID || map.getTile(tx, ty) == TileType.BARREL_EXPLOSIVE) {
-                        map.setTile(tx, ty, TileType.FLOOR)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun checkPlayerLevelUp() {
-        val xpNeeded = player.level * 100
-        if (player.xp >= xpNeeded) {
-            player.xp -= xpNeeded
-            player.level++
-            player.skillPoints += 2
-            AudioManager.playLevelUp()
-            logToConsole("CYBER SYSTEM UPGRADED: LEVEL ${player.level}! +2 SP")
-            saveGameProgress()
-        }
-    }
-
-    // --- CONTROLLER ACTIONS ---
-
-    private val playerRadius = 0.35f
-
-    private fun checkCollisionAt(x: Float, y: Float, z: Int): Boolean {
-        val map = gameLevels[z] ?: return true
-
-        // Out of bounds is a collision
-        if (x - playerRadius < 0f || x + playerRadius >= map.width ||
-            y - playerRadius < 0f || y + playerRadius >= map.height) {
-            return true
-        }
-
-        val minX = (x - playerRadius).toInt().coerceIn(0, map.width - 1)
-        val maxX = (x + playerRadius).toInt().coerceIn(0, map.width - 1)
-        val minY = (y - playerRadius).toInt().coerceIn(0, map.height - 1)
-        val maxY = (y + playerRadius).toInt().coerceIn(0, map.height - 1)
-
-        for (tx in minX..maxX) {
-            for (ty in minY..maxY) {
-                val tile = map.getTile(tx, ty)
-                if (!tile.isWalkable) {
-                    // Check if it's EMPTY and there is a walkable tile below on elevation layer z-1
-                    var isWalkableBelow = false
-                    if (tile == TileType.EMPTY && z > 0) {
-                        val mapBelow = gameLevels[z - 1]
-                        if (mapBelow != null) {
-                            val tileBelow = mapBelow.getTile(tx, ty)
-                            if (tileBelow.isWalkable) {
-                                isWalkableBelow = true
-                            }
-                        }
-                    }
-
-                    if (!isWalkableBelow) {
-                        // Circle-AABB collision check
-                        val closestX = x.coerceIn(tx.toFloat(), tx.toFloat() + 1f)
-                        val closestY = y.coerceIn(ty.toFloat(), ty.toFloat() + 1f)
-
-                        val distX = x - closestX
-                        val distY = y - closestY
-                        val distanceSquared = distX * distX + distY * distY
-
-                        if (distanceSquared < playerRadius * playerRadius) {
-                            return true // Collision!
-                        }
-                    }
-                }
-            }
-        }
-        return false
     }
 
     fun movePlayer(dx: Float, dy: Float) {
         if (isGameOver || isGameWon || isHackingActive) return
 
-        // Update direction vector
-        if (dx != 0f || dy != 0f) {
-            val d = sqrt(dx * dx + dy * dy)
-            if (d > 0.001f) {
-                lastMoveX = dx / d
-                lastMoveY = dy / d
-            }
-        }
+        val res = movementSystem.processPlayerMove(player, currentZLevel, dx, dy, noiseRipples)
+        if (res.moved) {
+            lastMoveX = res.lastMoveX
+            lastMoveY = res.lastMoveY
 
-        val speed = player.getSpeed()
-        val nextX = player.pos.x + dx * speed
-        val nextY = player.pos.y + dy * speed
-
-        val map = gameLevels[currentZLevel] ?: return
-
-        var moved = false
-        // 1. Sliding collision: check combined X+Y first
-        if (!checkCollisionAt(nextX, nextY, currentZLevel)) {
-            player.pos.x = nextX
-            player.pos.y = nextY
-            moved = true
-        } else {
-            // Combined collides, try moving X axis only (sliding along walls)
-            if (!checkCollisionAt(nextX, player.pos.y, currentZLevel)) {
-                player.pos.x = nextX
-                moved = true
-            }
-            // Try moving Y axis only (sliding along walls)
-            else if (!checkCollisionAt(player.pos.x, nextY, currentZLevel)) {
-                player.pos.y = nextY
-                moved = true
-            }
-        }
-
-        if (moved) {
-            val px = player.pos.x.toInt()
-            val py = player.pos.y.toInt()
-            val tile = map.getTile(px, py)
-
-            // Play footstep sounds with rate limiting based on sneaking status
-            val now = System.currentTimeMillis()
-            val stepInterval = if (player.isSneaking) 550L else 320L
-            if (now - lastFootstepTime >= stepInterval) {
-                AudioManager.playFootstep(sneaking = player.isSneaking)
-                lastFootstepTime = now
-            }
-
-            // 2. Elevation Layers: check if player walked off a ledge onto empty space
-            if (!tile.isWalkable && currentZLevel > 0) {
-                val mapBelow = gameLevels[currentZLevel - 1]
-                if (mapBelow != null) {
-                    val tileBelow = mapBelow.getTile(px, py)
-                    if (tileBelow.isWalkable) {
-                        currentZLevel--
-                        player.pos.z = currentZLevel.toFloat()
-                        player.health = (player.health - 15f).coerceAtLeast(0f)
-                        logToConsole("FALL DETECTED FROM ELEVATION LAYER! DAMAGE RECEIVED (-15HP)")
-                        triggerSoundRipple(player.pos, 8.5f) // Generates a loud sound ripple upon impact!
-                        if (player.health <= 0) {
-                            isGameOver = true
-                            stopGameLoop()
-                        }
-                    }
+            if (res.fallDamageTriggered) {
+                player.health = (player.health - 15f).coerceAtLeast(0f)
+                logToConsole("FALL DETECTED FROM ELEVATION LAYER! DAMAGE RECEIVED (-15HP)")
+                if (player.health <= 0) {
+                    isGameOver = true
+                    stopGameLoop()
                 }
             }
-
-            // Sound ripple creation if running
-            if (!player.isSneaking && !player.isInvisible) {
-                val soundRadius = if (player.equippedSystem.id == "quiet_soles") 2.5f else 5.5f
-                if (noiseRipples.isEmpty() || noiseRipples.last().pos.distanceTo(player.pos) > 2.0f) {
-                    triggerSoundRipple(player.pos, soundRadius)
-                }
+            if (res.newZLevel != null) {
+                currentZLevel = res.newZLevel!!
             }
-
             updateExplorationAtPlayer()
+            saveGameProgress()
         }
-    }
-
-    fun triggerSoundRipple(pos: Point3D, maxRadius: Float) {
-        noiseRipples.add(NoiseRipple(pos.copy(), 0.5f, maxRadius))
     }
 
     fun toggleSneak() {
         player.isSneaking = !player.isSneaking
         AudioManager.playStealthToggle(player.isSneaking)
         logToConsole("STEALTH INGRESS: ${if (player.isSneaking) "ACTIVE (QUIET)" else "INACTIVE (LOUD)"}")
+    }
+
+    // Commandos-Style Visibility & Noise Detection Engine API
+    fun triggerNoiseEvent(pos: Point3D, maxRadius: Float = 6.0f, speed: Float = 0.25f) {
+        val ripple = NoiseRipple(pos = pos.copy(), radius = 0.5f, maxRadius = maxRadius, speed = speed)
+        noiseRipples.add(ripple)
+        logToConsole("NOISE ENGINE: SOUND WAVE EMITTED [R=${maxRadius.toInt()}m]")
+    }
+
+    fun isPlayerSpotted(): Boolean {
+        return enemies.any { it.pos.z.toInt() == currentZLevel && !it.isDead && it.alertState == AlertState.ALERTED }
+    }
+
+    fun getHighestAlertState(): AlertState {
+        val activeOnLevel = enemies.filter { it.pos.z.toInt() == currentZLevel && !it.isDead }
+        if (activeOnLevel.any { it.alertState == AlertState.ALERTED }) return AlertState.ALERTED
+        if (activeOnLevel.any { it.alertState == AlertState.SUSPICIOUS }) return AlertState.SUSPICIOUS
+        return AlertState.PATROLLING
+    }
+
+    fun calculatePlayerNoiseOutput(): Float {
+        if (player.isInvisible) return 0f
+        if (player.isSneaking) return 0.2f
+        val systemDampening = if (player.equippedSystem.id == "quiet_soles") 0.35f else 1.0f
+        return 1.0f * systemDampening
     }
 
     fun toggleTacticalOverlay() {
@@ -1114,106 +534,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun executeAttack() {
         if (isGameOver || isGameWon || isHackingActive) return
-
-        val cost = 12f
-        if (player.energy < cost) {
-            logToConsole("INSUFFICIENT ENERGY CORE POWER")
-            return
-        }
-
-        player.energy = (player.energy - cost).coerceAtLeast(0f)
-
-        // Trigger noise
-        val noiseRadius = if (player.equippedWeapon.id == "plasma_carbine") 15f else 3f
-        triggerSoundRipple(player.pos, noiseRadius)
-
-        // Ranged Weapons shoot orbs
-        if (player.equippedWeapon.id == "plasma_carbine") {
-            // Fire projectile in direction player is looking/moving, defaulting to last move vector
-            var dirX = lastMoveX
-            var dirY = lastMoveY
-
-            val nearest = enemies.filter { !it.isDead && it.pos.z.toInt() == currentZLevel }.minByOrNull { it.pos.distanceTo(player.pos) }
-            if (nearest != null) {
-                val dx = nearest.pos.x - player.pos.x
-                val dy = nearest.pos.y - player.pos.y
-                val d = sqrt(dx*dx + dy*dy)
-                if (d > 0.1f) {
-                    dirX = dx / d
-                    dirY = dy / d
-                }
-            }
-
-            activeProjectiles.add(Pair(player.pos.copy(), Point3D(dirX, dirY, 0f)))
-            AudioManager.playLaser()
-            logToConsole("PLASMA CHARGE FIRED")
-        } else {
-            // Melee Swipe
-            var hitAny = false
-            var triggeredBackstab = false
-            for (enemy in enemies) {
-                if (enemy.isDead || enemy.pos.z.toInt() != currentZLevel) continue
-
-                val dist = enemy.pos.distanceTo(player.pos)
-                if (dist < 1.6f) {
-                    // Check if Backstab
-                    val angleDiff = abs(enemy.directionAngle - atan2(enemy.pos.y - player.pos.y, enemy.pos.x - player.pos.x))
-                    val isBackstab = player.isSneaking && (angleDiff < 1.0f || angleDiff > 2 * PI - 1.0f)
-                    val mult = if (isBackstab) {
-                        if (player.unlockedSkills.contains("ghost_backstab")) 5f else 3f
-                    } else 1f
-
-                    val dmg = player.getDamage() * mult
-                    enemy.health -= dmg
-                    enemy.alertState = AlertState.ALERTED
-                    enemy.lastKnownPlayerPos = player.pos.copy()
-
-                    hitAny = true
-                    if (isBackstab) {
-                        triggeredBackstab = true
-                        logToConsole("CRITICAL SILENT BACKSTAB! -${dmg.toInt()}HP")
-                    } else {
-                        logToConsole("SWIPE HIT ${enemy.name}: -${dmg.toInt()}HP")
-                    }
-
-                    if (enemy.health <= 0) {
-                        enemy.isDead = true
-                        player.xp += 30
-                        player.credits += 40
-                        checkPlayerLevelUp()
-                        AudioManager.playCreditLoot()
-                        logToConsole("TARGET ELIMINATED: +40C +30XP")
-                    }
-                }
-            }
-            if (hitAny) {
-                if (triggeredBackstab) {
-                    AudioManager.playBackstab()
-                } else {
-                    AudioManager.playAttack()
-                }
-            } else {
-                AudioManager.playAttack()
-                logToConsole("SWIPE MELEE ATTACK: MISSED")
-            }
-        }
+        combatSystem.executeAttack(player, enemies, currentZLevel, lastMoveX, lastMoveY, activeProjectiles, noiseRipples)
     }
 
-    // Interactive Action button (climb ladder, hack terminal, trigger explosion)
     fun executeInteract() {
         if (isGameOver || isGameWon || isHackingActive) return
 
-        val map = gameLevels[currentZLevel] ?: return
+        val map = levelManager.getLevelMap(currentZLevel) ?: return
         val currentTile = map.getTile(player.pos.x.toInt(), player.pos.y.toInt())
 
-        // 1. Check ladders
         if (currentTile == TileType.LADDER_UP) {
             if (currentZLevel < 3) {
                 currentZLevel++
                 player.pos.z = currentZLevel.toFloat()
                 AudioManager.playLadder(ascending = true)
                 logToConsole("ASCENDING SHAFT TO LEVEL Z=$currentZLevel")
-                // Reposition player nicely on new level ladder
                 updateExplorationAtPlayer()
                 return
             }
@@ -1228,7 +563,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 2. Check Adjacent terminals to hack or barrels to detonate
         val px = player.pos.x.toInt()
         val py = player.pos.y.toInt()
 
@@ -1239,7 +573,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 val tile = map.getTile(tx, ty)
 
                 if (tile == TileType.TERMINAL) {
-                    // Start hacking!
                     isHackingActive = true
                     hackProgress = 0f
                     hackTerminalPos = GridPos(tx, ty, currentZLevel)
@@ -1247,10 +580,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     logToConsole("UPLINK DOCKED. DECRYPTING NODE ENCRYPTION...")
                     return
                 } else if (tile == TileType.BARREL_EXPLOSIVE) {
-                    // Manual detonating trigger from skill tree or direct overload hack
                     if (player.unlockedSkills.contains("tech_base")) {
                         map.setTile(tx, ty, TileType.FLOOR)
-                        detonateExplosionAt(Point3D(tx.toFloat(), ty.toFloat(), currentZLevel.toFloat()))
+                        combatSystem.detonateExplosionAt(Point3D(tx.toFloat(), ty.toFloat(), currentZLevel.toFloat()), enemies, player)
                         return
                     }
                 } else if (tile == TileType.EXIT_PORTAL && currentZLevel == 3) {
@@ -1268,128 +600,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         logToConsole("NO INTERACTIVE TERMINALS OR SHAFTS IN RANGE")
     }
 
-    // Active Skill usage from Skill Tree
     fun triggerActiveSkill(skillId: String) {
-        if (!player.unlockedSkills.contains(skillId)) {
-            logToConsole("SKILL LOCKED IN COGNITIVE MATRIX")
-            return
-        }
-
-        when (skillId) {
-            "ronin_crit" -> { // Ronin Dash
-                val cost = 20f
-                if (player.energy < cost) {
-                    logToConsole("INSUFFICIENT ENERGY CORE POWER")
-                    return
-                }
-                player.energy -= cost
-                // Teleport forward 3 steps if walkable
-                val map = gameLevels[currentZLevel] ?: return
-                // Directional dash calculation using lastMoveX and lastMoveY
-                val oldX = player.pos.x
-                val oldY = player.pos.y
-                val targetX = (oldX + lastMoveX * 3.2f).coerceIn(1f, 18f)
-                val targetY = (oldY + lastMoveY * 3.2f).coerceIn(1f, 18f)
-
-                if (map.getTile(targetX.toInt(), targetY.toInt()).isWalkable) {
-                    player.pos.x = targetX
-                    player.pos.y = targetY
-                    AudioManager.playBackstab() // Cool high voltage swoosh for critical dash strike!
-                    logToConsole("KAZE DASH ACTIVATED: CRITICAL STRIKE LOADED")
-                    
-                    // Damage any enemies passed through (midpoint and endpoint checks)
-                    val midX = (oldX + targetX) / 2f
-                    val midY = (oldY + targetY) / 2f
-                    for (enemy in enemies) {
-                        if (!enemy.isDead && enemy.pos.z.toInt() == currentZLevel) {
-                            val d1 = enemy.pos.distanceTo(Point3D(oldX, oldY, currentZLevel.toFloat()))
-                            val d2 = enemy.pos.distanceTo(Point3D(midX, midY, currentZLevel.toFloat()))
-                            val d3 = enemy.pos.distanceTo(Point3D(targetX, targetY, currentZLevel.toFloat()))
-                            if (d1 < 1.6f || d2 < 1.6f || d3 < 1.6f) {
-                                val dmg = player.getDamage() * 2f
-                                enemy.health -= dmg
-                                enemy.alertState = AlertState.ALERTED
-                                logToConsole("DASHED THROUGH ${enemy.name}: -${dmg.toInt()}HP")
-                                if (enemy.health <= 0) {
-                                    enemy.isDead = true
-                                    player.xp += 30
-                                    player.credits += 40
-                                    checkPlayerLevelUp()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            "tech_ultimate" -> { // EMP Reboot
-                val cost = 40f
-                if (player.energy < cost) {
-                    logToConsole("INSUFFICIENT ENERGY CORE POWER")
-                    return
-                }
-                player.energy -= cost
-                val map = gameLevels[currentZLevel] ?: return
-                // Clear all laser gates in current map
-                for (x in 0 until map.width) {
-                    for (y in 0 until map.height) {
-                        if (map.getTile(x, y) == TileType.LASER_GRID) {
-                            map.setTile(x, y, TileType.FLOOR)
-                        }
-                    }
-                }
-                // Stun all enemies on this Z level for 8s
-                for (enemy in enemies) {
-                    if (!enemy.isDead && enemy.pos.z.toInt() == currentZLevel) {
-                        enemy.alertState = AlertState.SUSPICIOUS
-                        enemy.alertMeter = 10f
-                        enemy.attackCooldown = 200 // massive stun cooldown
-                    }
-                }
-                AudioManager.playAlert() // Alarm shutdown glitch chime
-                logToConsole("EMP COMPLETED: ALL LOCAL GATE LATTICES DESTROYED")
-            }
-            "ghost_smoke" -> { // Smoke Bomb
-                val cost = 15f
-                if (player.energy < cost) {
-                    logToConsole("INSUFFICIENT ENERGY CORE POWER")
-                    return
-                }
-                player.energy -= cost
-                // Reset alert on nearby enemies
-                for (enemy in enemies) {
-                    if (!enemy.isDead && enemy.pos.z.toInt() == currentZLevel && enemy.pos.distanceTo(player.pos) < 4.0f) {
-                        enemy.alertState = AlertState.PATROLLING
-                        enemy.alertMeter = 0f
-                        enemy.lastKnownPlayerPos = null
-                    }
-                }
-                AudioManager.playStealthToggle(isActive = false) // Chaff dispersion swoosh
-                logToConsole("CHAFF BOMB: LOCAL SENTRY MATRIX RE-DAMPENED")
-            }
-            "ghost_ultimate" -> { // Phantom Matrix (Invisibility)
-                val cost = 30f
-                if (player.energy < cost) {
-                    logToConsole("INSUFFICIENT ENERGY CORE POWER")
-                    return
-                }
-                player.energy -= cost
-                player.isInvisible = true
-                player.invisibleTimer = 10.0f
-                AudioManager.playStealthToggle(isActive = true) // Phase cloak hum!
-                logToConsole("PHANTOM MATRIX INVISIBILITY CLOAK DEPLOYED")
-            }
-            else -> {
-                logToConsole("SKILL HAS PASSIVE MATRIX EFFECTS")
-            }
-        }
+        combatSystem.triggerActiveSkill(skillId, player, enemies, currentZLevel, lastMoveX, lastMoveY)
     }
 
-    // Purchase & Unlock Skill Node
     fun buySkill(skillId: String) {
         val node = skillNodes.find { it.id == skillId } ?: return
         if (node.isUnlocked) return
 
-        // Check parents
         val parentsUnlocked = node.parents.all { pId ->
             player.unlockedSkills.contains(pId)
         }
@@ -1415,7 +633,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Customize loadouts
     fun equipItem(item: EquipmentItem) {
         var nextPlayer = when (item.type) {
             EquipmentType.WEAPON -> player.copy(equippedWeapon = item)
@@ -1423,7 +640,6 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             EquipmentType.SYSTEM -> player.copy(equippedSystem = item)
         }
 
-        // Recalculate max health and max energy based on all equipped gear
         val totalHealthBoost = nextPlayer.equippedWeapon.statBoostHealth + nextPlayer.equippedCore.statBoostHealth + nextPlayer.equippedSystem.statBoostHealth
         val totalEnergyBoost = nextPlayer.equippedWeapon.statBoostEnergy + nextPlayer.equippedCore.statBoostEnergy + nextPlayer.equippedSystem.statBoostEnergy
 
@@ -1442,50 +658,83 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun buyEquipmentItem(item: EquipmentItem) {
         if (player.credits >= item.costCredits) {
+            val updatedOwned = player.inventory.ownedEquipmentIds + item.id
             player.credits -= item.costCredits
+            player.inventory = player.inventory.copy(ownedEquipmentIds = updatedOwned)
             equipItem(item)
             logToConsole("PURCHASED ${item.name} FOR ${item.costCredits}C")
-            // equipItem already does saveGameProgress() and updates state
+            saveGameProgress()
         } else {
             logToConsole("INSUFFICIENT CREDITS")
         }
     }
 
+    fun buyHealthPack() {
+        val cost = 50
+        if (player.credits >= cost) {
+            player.credits -= cost
+            val nextPacks = player.inventory.healthPacks + 1
+            player.inventory = player.inventory.copy(healthPacks = nextPacks)
+            logToConsole("PURCHASED MED-PACK (+1). TOTAL: $nextPacks")
+            saveGameProgress()
+        } else {
+            logToConsole("INSUFFICIENT CREDITS (NEEDS 50C)")
+        }
+    }
+
+    fun buyEnergyCell() {
+        val cost = 50
+        if (player.credits >= cost) {
+            player.credits -= cost
+            val nextCells = player.inventory.energyCells + 1
+            player.inventory = player.inventory.copy(energyCells = nextCells)
+            logToConsole("PURCHASED E-CELL (+1). TOTAL: $nextCells")
+            saveGameProgress()
+        } else {
+            logToConsole("INSUFFICIENT CREDITS (NEEDS 50C)")
+        }
+    }
+
+    fun useHealthPack() {
+        if (player.inventory.healthPacks > 0 && player.health < player.maxHealth) {
+            val nextPacks = player.inventory.healthPacks - 1
+            player.inventory = player.inventory.copy(healthPacks = nextPacks)
+            player.health = (player.health + 40f).coerceAtMost(player.maxHealth)
+            logToConsole("MED-PACK DEPLOYED: +40 HP (REMAINING: $nextPacks)")
+            saveGameProgress()
+        } else if (player.inventory.healthPacks == 0) {
+            logToConsole("NO MED-PACKS AVAILABLE IN INVENTORY")
+        }
+    }
+
+    fun useEnergyCell() {
+        if (player.inventory.energyCells > 0 && player.energy < player.maxEnergy) {
+            val nextCells = player.inventory.energyCells - 1
+            player.inventory = player.inventory.copy(energyCells = nextCells)
+            player.energy = (player.energy + 40f).coerceAtMost(player.maxEnergy)
+            logToConsole("E-CELL INJECTED: +40 EP (REMAINING: $nextCells)")
+            saveGameProgress()
+        } else if (player.inventory.energyCells == 0) {
+            logToConsole("NO E-CELLS AVAILABLE IN INVENTORY")
+        }
+    }
+
     fun updateExplorationAtPlayer(force: Boolean = false) {
-        val px = player.pos.x.toInt()
-        val py = player.pos.y.toInt()
-        val pz = currentZLevel
-
-        if (!force && px == lastExploredGridX && py == lastExploredGridY && pz == lastExploredZ) {
-            return
-        }
-
-        lastExploredGridX = px
-        lastExploredGridY = py
-        lastExploredZ = pz
-
-        val radius = 5
-        val currentSet = exploredTiles[pz]?.toMutableSet() ?: mutableSetOf()
-        var changed = false
-
-        for (dx in -radius..radius) {
-            for (dy in -radius..radius) {
-                if (dx * dx + dy * dy <= radius * radius) {
-                    val tx = px + dx
-                    val ty = py + dy
-                    if (tx in 0 until 20 && ty in 0 until 20) {
-                        if (currentSet.add("$tx,$ty")) {
-                            changed = true
-                        }
-                    }
-                }
-            }
-        }
+        val (updated, changed, triple) = levelManager.updateExploration(
+            player.pos,
+            currentZLevel,
+            exploredTiles,
+            lastExploredGridX,
+            lastExploredGridY,
+            lastExploredZ,
+            force
+        )
 
         if (changed) {
-            val updatedMap = exploredTiles.toMutableMap()
-            updatedMap[pz] = currentSet
-            exploredTiles = updatedMap
+            exploredTiles = updated.toMutableMap()
+            lastExploredGridX = triple.first
+            lastExploredGridY = triple.second
+            lastExploredZ = triple.third
             saveGameProgress()
         }
     }

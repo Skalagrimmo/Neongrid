@@ -307,6 +307,26 @@ enum class AlertState {
     ALERTED      // Vision cone is Red, attacks player
 }
 
+// Active Quest Data Model
+data class Quest(
+    val id: String = "sector_gibson_main",
+    val title: String = "Infiltrate Sector Gibson",
+    val description: String = "Hack security terminals and reach the Sky Portal Receiver on Level Z=3.",
+    var currentProgress: Int = 0,
+    val targetCount: Int = 3,
+    var isCompleted: Boolean = false
+) {
+    val progressRatio: Float
+        get() = (currentProgress.toFloat() / targetCount.coerceAtLeast(1)).coerceIn(0f, 1f)
+}
+
+// Player Inventory Data Model
+data class Inventory(
+    var ownedEquipmentIds: Set<String> = setOf("nano_blade", "force_shield", "targeting_chip"),
+    var healthPacks: Int = 2,
+    var energyCells: Int = 2
+)
+
 // Player state model
 data class Player(
     var pos: Point3D = Point3D(2f, 2f, 1f), // Starts on Z=1 (Main Street)
@@ -324,7 +344,9 @@ data class Player(
     var equippedWeapon: EquipmentItem = EquipmentItem.DEFAULT_WEAPON,
     var equippedCore: EquipmentItem = EquipmentItem.DEFAULT_CORE,
     var equippedSystem: EquipmentItem = EquipmentItem.DEFAULT_SYSTEM,
-    var unlockedSkills: Set<String> = setOf("ronin_base")
+    var unlockedSkills: Set<String> = setOf("ronin_base"),
+    var quest: Quest = Quest(),
+    var inventory: Inventory = Inventory()
 ) {
     fun getSpeed(): Float {
         val base = if (isSneaking) 0.08f else 0.16f

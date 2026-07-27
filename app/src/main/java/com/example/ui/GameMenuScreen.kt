@@ -30,7 +30,7 @@ fun GameMenuScreen(
     onStartNewGame: () -> Unit,
     onLoadGame: () -> Unit,
     onViewControls: () -> Unit,
-    onOpenHtml5Canvas: () -> Unit
+    onOpenNativeIsoCanvas: () -> Unit
 ) {
     Box(
         modifier = modifier
@@ -167,22 +167,22 @@ fun GameMenuScreen(
                 }
             }
 
-            // HTML5 Canvas Isometric Simulator button (Immersive Green highlight style)
+            // Native Compose Canvas Isometric Inspector button (Immersive Green highlight style)
             Button(
-                onClick = onOpenHtml5Canvas,
+                onClick = onOpenNativeIsoCanvas,
                 colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.5f)),
                 border = BorderStroke(1.dp, ImmersiveGreen.copy(alpha = 0.8f)),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .testTag("menu_html5_canvas_button")
+                    .testTag("menu_native_iso_canvas_button")
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "HTML5 Canvas Grid", tint = ImmersiveGreen)
+                    Icon(Icons.Default.PlayArrow, contentDescription = "Native ISO Canvas", tint = ImmersiveGreen)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "HTML5 CANVAS GRID",
+                        text = "NATIVE ISO CANVAS",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,

@@ -21,7 +21,20 @@ data class PlayerSaveState(
     val currentZLevel: Int = 1,
     val playerPosX: Float = 2f,
     val playerPosY: Float = 2f,
+    val playerHealth: Float = 100f,
+    val playerEnergy: Float = 80f,
     val exploredTilesString: String = "",
+    // Active Quest Progress Persistence
+    val questId: String = "sector_gibson_main",
+    val questTitle: String = "Infiltrate Sector Gibson",
+    val questDescription: String = "Hack security terminals and reach the Sky Portal Receiver on Level Z=3.",
+    val questProgress: Int = 0,
+    val questTargetCount: Int = 3,
+    val questCompleted: Boolean = false,
+    // Inventory State Persistence
+    val inventoryEquipmentIdsString: String = "nano_blade,force_shield,targeting_chip",
+    val inventoryHealthPacks: Int = 2,
+    val inventoryEnergyCells: Int = 2,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -37,7 +50,7 @@ interface PlayerSaveStateDao {
     suspend fun deleteSaveState()
 }
 
-@Database(entities = [PlayerSaveState::class], version = 2, exportSchema = false)
+@Database(entities = [PlayerSaveState::class], version = 3, exportSchema = false)
 abstract class GameDatabase : RoomDatabase() {
     abstract fun saveStateDao(): PlayerSaveStateDao
 
