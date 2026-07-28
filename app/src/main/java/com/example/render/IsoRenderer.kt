@@ -1,6 +1,7 @@
 package com.example.render
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -33,6 +34,7 @@ object IsoRenderer {
         centerOffsetX: Float = 0f,
         centerOffsetY: Float = 0f,
         isLowSpecMode: Boolean = true,
+        gbcSettings: GbcGraphicsSettings = GbcGraphicsSettings(),
         toIsoFunc: (Float, Float, Float) -> Offset
     ) {
         val halfW = tileWidth / 2f
@@ -48,7 +50,7 @@ object IsoRenderer {
             return sx >= -margin && sx <= canvasWidth + margin && sy >= -margin && sy <= canvasHeight + margin
         }
 
-        // 1. Z-1 Lower Underlay Pass (Skipped in Low-Spec Mode for 2x Tile Draw Savings)
+        // 1. Z-1 Lower Underlay Pass
         if (currentZLevel > 0 && !isLowSpecMode) {
             val levelBelow = gameLevels[currentZLevel - 1]
             if (levelBelow != null) {
@@ -61,7 +63,7 @@ object IsoRenderer {
                                 if (tileBelow.isWalkable) {
                                     val isoBelow = toIsoFunc(x.toFloat(), y.toFloat(), (currentZLevel - 1).toFloat())
                                     if (isVisibleOnScreen(isoBelow)) {
-                                        IsoTileRenderer.drawTile(drawScope, drawPath, isoBelow, tileBelow, halfW, halfH, true, currentZLevel - 1)
+                                        IsoTileRenderer.drawTile(drawScope, drawPath, isoBelow, tileBelow, halfW, halfH, true, currentZLevel - 1, gbcSettings)
                                     }
                                 }
                             }
@@ -101,14 +103,14 @@ object IsoRenderer {
                     if (tile != TileType.WALL && tile != TileType.EMPTY) {
                         val tileIso = toIsoFunc(x.toFloat(), y.toFloat(), currentZLevel.toFloat())
                         if (isVisibleOnScreen(tileIso)) {
-                            IsoTileRenderer.drawTile(drawScope, drawPath, tileIso, tile, halfW, halfH, true, currentZLevel)
+                            IsoTileRenderer.drawTile(drawScope, drawPath, tileIso, tile, halfW, halfH, true, currentZLevel, gbcSettings)
                         }
                     }
                 }
             }
         }
 
-        // 5. Pre-index Enemies & Walls for O(1) Interleaved Depth Pass Lookups
+        // 5. Pre-index Enemies & Walls for Depth Pass
         val activeEnemiesByTile = mutableMapOf<Pair<Int, Int>, MutableList<Enemy>>()
         for (enemy in enemies) {
             if (!enemy.isDead && enemy.pos.z.toInt() == currentZLevel) {
@@ -129,7 +131,7 @@ object IsoRenderer {
 
         val occludedEnemyIds = mutableSetOf<String>()
 
-        // 6. Interleaved Depth-Sorted Pass (Optimized with O(1) Spatial Lookups & Viewport Culling)
+        // 6. Interleaved Depth-Sorted Pass
         for (sum in 0 until (levelMap.width + levelMap.height)) {
             for (x in 0..sum) {
                 val y = sum - x
@@ -141,7 +143,7 @@ object IsoRenderer {
                         val inView = isVisibleOnScreen(tileIso, 180f)
 
                         if (inView && isWall) {
-                            IsoStructureRenderer.drawWallBlock(drawScope, drawPath, tileIso, halfW, halfH, 40f, true)
+                            IsoStructureRenderer.drawWallBlock(drawScope, drawPath, tileIso, halfW, halfH, 40f, true, gbcSettings)
                         }
 
                         // O(1) Enemy Lookup
@@ -151,7 +153,6 @@ object IsoRenderer {
                                 val ePos = enemyRenderPosMap[enemy.id] ?: Offset(enemy.pos.x, enemy.pos.y)
                                 val enemyIso = toIsoFunc(ePos.x, ePos.y, enemy.pos.z)
 
-                                // Check wall occlusion
                                 var occluded = false
                                 val maxCheckX = (x + 2).coerceAtMost(levelMap.width - 1)
                                 val maxCheckY = (y + 2).coerceAtMost(levelMap.height - 1)
@@ -168,7 +169,7 @@ object IsoRenderer {
                                 if (occluded) {
                                     occludedEnemyIds.add(enemy.id)
                                 } else if (inView) {
-                                    IsoCharacterRenderer.drawEnemyCharacter(drawScope, enemyIso, enemy, false)
+                                    IsoCharacterRenderer.drawEnemyCharacter(drawScope, enemyIso, enemy, false, gbcSettings)
                                 }
                             }
                         }
@@ -176,7 +177,7 @@ object IsoRenderer {
                         // Player Render
                         if (playerGridX == x && playerGridY == y && inView) {
                             val playerIso = toIsoFunc(renderPlayerX, renderPlayerY, currentZLevel.toFloat())
-                            IsoCharacterRenderer.drawPlayerCharacter(drawScope, drawPath, playerIso, player, lastMoveX, lastMoveY)
+                            IsoCharacterRenderer.drawPlayerCharacter(drawScope, drawPath, playerIso, player, lastMoveX, lastMoveY, gbcSettings)
                         }
                     }
                 }
@@ -189,7 +190,7 @@ object IsoRenderer {
                 val ePos = enemyRenderPosMap[enemy.id] ?: Offset(enemy.pos.x, enemy.pos.y)
                 val enemyIso = toIsoFunc(ePos.x, ePos.y, enemy.pos.z)
                 if (isVisibleOnScreen(enemyIso, 120f)) {
-                    IsoCharacterRenderer.drawEnemyCharacter(drawScope, enemyIso, enemy, true)
+                    IsoCharacterRenderer.drawEnemyCharacter(drawScope, enemyIso, enemy, true, gbcSettings)
                 }
             }
         }
@@ -207,7 +208,25 @@ object IsoRenderer {
         // 9. Tactical Overlay Pass
         if (isTacticalOverlayActive) {
             val pIso = toIsoFunc(renderPlayerX, renderPlayerY, currentZLevel.toFloat())
-            drawScope.drawCircle(color = ImmersiveCyan.copy(alpha = 0.3f), radius = halfW * 3.5f, center = pIso, style = Stroke(width = 1.5f))
+            drawScope.drawCircle(color = gbcSettings.palette.wallAccent.copy(alpha = 0.4f), radius = halfW * 3.5f, center = pIso, style = Stroke(width = 1.5f))
+        }
+
+        // 10. GBC Retro Scanlines Overlay
+        if (gbcSettings.isScanlinesEnabled && canvasWidth > 0f && canvasHeight > 0f) {
+            val scanlineStep = 6f
+            var y = -centerOffsetY
+            val maxY = canvasHeight - centerOffsetY
+            val scanColor = gbcSettings.palette.gridOutline.copy(alpha = 0.18f)
+            while (y < maxY) {
+                drawScope.drawLine(
+                    color = scanColor,
+                    start = Offset(-centerOffsetX, y),
+                    end = Offset(canvasWidth - centerOffsetX, y),
+                    strokeWidth = 1.5f
+                )
+                y += scanlineStep
+            }
         }
     }
 }
+

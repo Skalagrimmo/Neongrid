@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.example.model.AlertState
 import com.example.model.Enemy
+import com.example.model.GbcGraphicsSettings
 import com.example.model.Player
 import com.example.ui.theme.*
 import kotlin.math.cos
@@ -21,13 +22,15 @@ object IsoCharacterRenderer {
         isoPos: Offset,
         player: Player,
         lastMoveX: Float,
-        lastMoveY: Float
+        lastMoveY: Float,
+        gbcSettings: GbcGraphicsSettings = GbcGraphicsSettings()
     ) {
+        val palette = gbcSettings.palette
         val baseAlpha = if (player.isInvisible) 0.35f else 1.0f
 
-        // Shadow under player
+        // 8-bit Ground Shadow
         drawScope.drawCircle(
-            color = Color.Black.copy(alpha = 0.4f * baseAlpha),
+            color = palette.gridOutline.copy(alpha = 0.5f * baseAlpha),
             radius = 16f,
             center = isoPos + Offset(0f, 4f)
         )
@@ -35,36 +38,37 @@ object IsoCharacterRenderer {
         // Force shield ring if active
         if (player.equippedCore.id == "force_shield") {
             drawScope.drawCircle(
-                color = ImmersiveCyan.copy(alpha = 0.4f * baseAlpha),
+                color = palette.wallAccent.copy(alpha = 0.5f * baseAlpha),
                 radius = 24f,
                 center = isoPos - Offset(0f, 16f),
-                style = Stroke(width = 2f)
+                style = Stroke(width = 2.5f)
             )
         }
 
-        // Cyber Body Suit
-        val suitColor = if (player.isSneaking) ImmersiveBlue else ImmersiveLavender
+        // 8-Bit Cyber Body Suit
+        val suitColor = if (player.isSneaking) palette.wallAccent else palette.playerBody
         drawScope.drawCircle(
             color = suitColor.copy(alpha = baseAlpha),
             radius = 14f,
             center = isoPos - Offset(0f, 16f)
         )
+        val outlineCol = if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else Color.White
         drawScope.drawCircle(
-            color = Color.White.copy(alpha = baseAlpha),
+            color = outlineCol.copy(alpha = baseAlpha),
             radius = 14f,
             center = isoPos - Offset(0f, 16f),
             style = Stroke(width = 2f)
         )
 
-        // Cyber Visor Helmet
-        val visorColor = if (player.isInvisible) ImmersiveCyan else ImmersiveGreen
+        // GBC Cyber Visor Helmet
+        val visorColor = if (player.isInvisible) palette.wallAccent else palette.playerVisor
         drawScope.drawCircle(
             color = visorColor.copy(alpha = baseAlpha),
             radius = 6f,
             center = isoPos - Offset(0f, 20f)
         )
 
-        // Direction Arrow
+        // 8-Bit Direction Arrow
         val moveLength = kotlin.math.sqrt(lastMoveX * lastMoveX + lastMoveY * lastMoveY)
         if (moveLength > 0.01f) {
             val normX = lastMoveX / moveLength
@@ -72,7 +76,7 @@ object IsoCharacterRenderer {
             val arrowIsoX = (normX - normY) * 20f
             val arrowIsoY = (normX + normY) * 10f
             drawScope.drawLine(
-                color = ImmersiveAmber.copy(alpha = baseAlpha),
+                color = palette.terminalColor.copy(alpha = baseAlpha),
                 start = isoPos - Offset(0f, 16f),
                 end = isoPos - Offset(0f, 16f) + Offset(arrowIsoX, arrowIsoY),
                 strokeWidth = 3f
@@ -84,51 +88,54 @@ object IsoCharacterRenderer {
         drawScope: DrawScope,
         isoPos: Offset,
         enemy: Enemy,
-        isXRaySilhouette: Boolean = false
+        isXRaySilhouette: Boolean = false,
+        gbcSettings: GbcGraphicsSettings = GbcGraphicsSettings()
     ) {
+        val palette = gbcSettings.palette
+
         if (isXRaySilhouette) {
             drawScope.drawCircle(
-                color = ImmersiveRed.copy(alpha = 0.6f),
+                color = palette.enemyAlert.copy(alpha = 0.8f),
                 radius = 12f,
                 center = isoPos - Offset(0f, 14f),
-                style = Stroke(width = 2f)
+                style = Stroke(width = 2.5f)
             )
             return
         }
 
-        // Shadow
+        // Ground Shadow
         drawScope.drawCircle(
-            color = Color.Black.copy(alpha = 0.4f),
+            color = palette.gridOutline.copy(alpha = 0.5f),
             radius = 14f,
             center = isoPos + Offset(0f, 4f)
         )
 
-        // Enemy Color by Alert State
+        // Enemy Color by Alert State (GBC Palette Mapping)
         val color = when (enemy.alertState) {
-            AlertState.PATROLLING -> ImmersiveGreen
-            AlertState.SUSPICIOUS -> ImmersiveAmber
-            AlertState.ALERTED -> ImmersiveRed
+            AlertState.PATROLLING -> palette.enemyPatrol
+            AlertState.SUSPICIOUS -> palette.enemySuspicious
+            AlertState.ALERTED -> palette.enemyAlert
         }
 
-        // Enemy Sprite Shape (Drones are diamond, Sentries are circle, Boss is big circle)
         val bodyRadius = if (enemy.type == "Boss") 20f else 12f
         drawScope.drawCircle(
             color = color,
             radius = bodyRadius,
             center = isoPos - Offset(0f, 14f)
         )
+        val outlineCol = if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else Color.White
         drawScope.drawCircle(
-            color = Color.White,
+            color = outlineCol,
             radius = bodyRadius,
             center = isoPos - Offset(0f, 14f),
-            style = Stroke(width = 1.5f)
+            style = Stroke(width = 2f)
         )
 
         // Direction Indicator Line
         val dirIsoX = (cos(enemy.directionAngle) - sin(enemy.directionAngle)) * (bodyRadius + 8f)
         val dirIsoY = (cos(enemy.directionAngle) + sin(enemy.directionAngle)) * (bodyRadius / 2f + 4f)
         drawScope.drawLine(
-            color = Color.Yellow,
+            color = palette.terminalColor,
             start = isoPos - Offset(0f, 14f),
             end = isoPos - Offset(0f, 14f) + Offset(dirIsoX, dirIsoY),
             strokeWidth = 2.5f
@@ -140,16 +147,17 @@ object IsoCharacterRenderer {
             val barH = 4f
             val barTopLeft = isoPos - Offset(barW / 2f, bodyRadius + 24f)
             drawScope.drawRect(
-                color = Color.Black,
+                color = palette.gridOutline,
                 topLeft = barTopLeft,
                 size = androidx.compose.ui.geometry.Size(barW, barH)
             )
             val hpPct = (enemy.health / enemy.maxHealth).coerceIn(0f, 1f)
             drawScope.drawRect(
-                color = ImmersiveRed,
+                color = palette.enemyAlert,
                 topLeft = barTopLeft,
                 size = androidx.compose.ui.geometry.Size(barW * hpPct, barH)
             )
         }
     }
 }
+

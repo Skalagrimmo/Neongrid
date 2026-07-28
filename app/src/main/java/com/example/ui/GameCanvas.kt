@@ -168,6 +168,7 @@ fun GameCanvas(
                 centerOffsetX = centerOffsetX,
                 centerOffsetY = centerOffsetY,
                 isLowSpecMode = viewModel.isLowSpecPerformanceMode,
+                gbcSettings = viewModel.gbcGraphicsSettings,
                 toIsoFunc = ::toIso
             )
 

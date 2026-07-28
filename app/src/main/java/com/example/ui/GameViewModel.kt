@@ -48,9 +48,33 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     var isLowSpecPerformanceMode by mutableStateOf(true)
         private set
 
+    // Game Boy Color Graphics & Palette Quality State
+    var gbcGraphicsSettings by mutableStateOf(GbcGraphicsSettings())
+        private set
+
     fun togglePerformanceMode() {
         isLowSpecPerformanceMode = !isLowSpecPerformanceMode
         logToConsole(if (isLowSpecPerformanceMode) "PERF MODE: 2012-2013 4-CORE OPTIMIZATION ENABLED" else "PERF MODE: 60FPS FULL SHADER ENGAGED")
+    }
+
+    fun setGbcPalette(palette: GbcPalette) {
+        gbcGraphicsSettings = gbcGraphicsSettings.copy(palette = palette)
+        logToConsole("GBC PALETTE: SWITCHED TO [${palette.displayName.uppercase()}]")
+    }
+
+    fun toggleGbcScanlines() {
+        gbcGraphicsSettings = gbcGraphicsSettings.copy(isScanlinesEnabled = !gbcGraphicsSettings.isScanlinesEnabled)
+        logToConsole("GBC DISPLAY: CRT SCANLINES [${if (gbcGraphicsSettings.isScanlinesEnabled) "ENABLED" else "DISABLED"}]")
+    }
+
+    fun toggleGbcDither() {
+        gbcGraphicsSettings = gbcGraphicsSettings.copy(isPixelDitherEnabled = !gbcGraphicsSettings.isPixelDitherEnabled)
+        logToConsole("GBC GRAPHICS: PIXEL DITHER [${if (gbcGraphicsSettings.isPixelDitherEnabled) "ACTIVE" else "OFF"}]")
+    }
+
+    fun toggleGbcPixelOutlines() {
+        gbcGraphicsSettings = gbcGraphicsSettings.copy(isPixelOutlineEnabled = !gbcGraphicsSettings.isPixelOutlineEnabled)
+        logToConsole("GBC GRAPHICS: PIXEL OUTLINES [${if (gbcGraphicsSettings.isPixelOutlineEnabled) "ACTIVE" else "OFF"}]")
     }
 
     // Active Game Entities & State

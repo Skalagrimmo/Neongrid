@@ -290,6 +290,121 @@ fun GameHud(
                         )
                     }
 
+                    // Game Boy Color Graphics & Palette Dialog Button
+                    var showGbcDialog by remember { mutableStateOf(false) }
+                    val gbcSettings = viewModel.gbcGraphicsSettings
+
+                    Button(
+                        onClick = { showGbcDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader),
+                        border = BorderStroke(1.dp, ImmersiveGreen),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        modifier = Modifier
+                            .height(30.dp)
+                            .testTag("hud_gbc_graphics_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = "GBC Graphics",
+                            tint = ImmersiveGreen,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = "GBC",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = ImmersiveGreen
+                        )
+                    }
+
+                    if (showGbcDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showGbcDialog = false },
+                            containerColor = ImmersiveBgDark,
+                            title = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Palette, contentDescription = null, tint = ImmersiveGreen)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("GBC GRAPHICS & PALETTE", color = Color.White, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                }
+                            },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Text("PALETTE MODE:", color = ImmersiveSlateLight, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+
+                                    val palettes = listOf(GbcPalette.CLASSIC_GBC, GbcPalette.CYBER_8BIT, GbcPalette.POCKET_DMG, GbcPalette.RETRO_ARCADE)
+                                    palettes.forEach { pal ->
+                                        val isSel = gbcSettings.palette == pal
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(if (isSel) ImmersiveBgHeader else Color.Transparent, RoundedCornerShape(6.dp))
+                                                .border(1.dp, if (isSel) ImmersiveGreen else Color(0x33FFFFFF), RoundedCornerShape(6.dp))
+                                                .clickable { viewModel.setGbcPalette(pal) }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(pal.displayName, color = if (isSel) ImmersiveGreen else Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                Box(Modifier.size(12.dp).background(pal.bgDark, CircleShape).border(1.dp, Color.White, CircleShape))
+                                                Box(Modifier.size(12.dp).background(pal.floorPrimary, CircleShape).border(1.dp, Color.White, CircleShape))
+                                                Box(Modifier.size(12.dp).background(pal.wallAccent, CircleShape).border(1.dp, Color.White, CircleShape))
+                                                Box(Modifier.size(12.dp).background(pal.terminalColor, CircleShape).border(1.dp, Color.White, CircleShape))
+                                            }
+                                        }
+                                    }
+
+                                    Divider(color = Color(0x33FFFFFF))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("8-BIT OUTLINES", color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                        Switch(
+                                            checked = gbcSettings.isPixelOutlineEnabled,
+                                            onCheckedChange = { viewModel.toggleGbcPixelOutlines() }
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("PIXEL DITHER MATRIX", color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                        Switch(
+                                            checked = gbcSettings.isPixelDitherEnabled,
+                                            onCheckedChange = { viewModel.toggleGbcDither() }
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("CRT SCANLINES", color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                        Switch(
+                                            checked = gbcSettings.isScanlinesEnabled,
+                                            onCheckedChange = { viewModel.toggleGbcScanlines() }
+                                        )
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showGbcDialog = false }) {
+                                    Text("DONE", color = ImmersiveGreen, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        )
+                    }
+
                     // Loadout Gear button
                     Button(
                         onClick = onOpenLoadout,
