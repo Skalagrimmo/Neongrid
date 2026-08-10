@@ -2,9 +2,12 @@ package com.example.engine
 
 import com.example.model.*
 import com.example.ui.AudioManager
+import com.example.ui.SoundManager
 import kotlin.math.*
 
-class StealthAiSystem {
+class StealthAiSystem(
+    val enemyAIManager: EnemyAIManager = EnemyAIManager()
+) {
 
     interface AiLogListener {
         fun onLog(message: String)
@@ -16,6 +19,10 @@ class StealthAiSystem {
         logListener?.onLog(msg)
     }
 
+    /**
+     * Raycasts line of sight on the GameLevelMap grid between start and end.
+     * Returns true if no wall or explosive barrel blocks vision.
+     */
     fun hasLineOfSight(start: Point3D, end: Point3D, levelMap: GameLevelMap): Boolean {
         val dx = end.x - start.x
         val dy = end.y - start.y
@@ -43,6 +50,122 @@ class StealthAiSystem {
         return true
     }
 
+    /**
+     * Calculates a list of grid patrol waypoints around a given start position on the level map grid.
+     */
+    fun calculateGridPatrolWaypoints(
+        startPos: Point3D,
+        levelMap: GameLevelMap?,
+        radius: Int = 4
+    ): List<Point3D> {
+        if (levelMap == null) {
+            return listOf(
+                startPos,
+                Point3D(startPos.x + radius, startPos.y, startPos.z),
+                Point3D(startPos.x + radius, startPos.y + radius, startPos.z),
+                Point3D(startPos.x, startPos.y + radius, startPos.z)
+            )
+        }
+
+        val z = startPos.z
+        val startX = startPos.x.toInt().coerceIn(0, levelMap.width - 1)
+        val startY = startPos.y.toInt().coerceIn(0, levelMap.height - 1)
+
+        val candidates = listOf(
+            Pair(startX, startY),
+            Pair((startX + radius).coerceAtMost(levelMap.width - 2), startY),
+            Pair((startX + radius).coerceAtMost(levelMap.width - 2), (startY + radius).coerceAtMost(levelMap.height - 2)),
+            Pair(startX, (startY + radius).coerceAtMost(levelMap.height - 2))
+        )
+
+        val waypoints = mutableListOf<Point3D>()
+        for ((cx, cy) in candidates) {
+            if (levelMap.getTile(cx, cy).isWalkable) {
+                waypoints.add(Point3D(cx + 0.5f, cy + 0.5f, z))
+            } else {
+                // Find nearest walkable neighbor
+                val alt = findNearestWalkableTile(cx, cy, levelMap, z)
+                if (alt != null && !waypoints.contains(alt)) {
+                    waypoints.add(alt)
+                }
+            }
+        }
+
+        return if (waypoints.size >= 2) waypoints else listOf(startPos)
+    }
+
+    private fun findNearestWalkableTile(x: Int, y: Int, levelMap: GameLevelMap, z: Float): Point3D? {
+        for (dx in -2..2) {
+            for (dy in -2..2) {
+                val nx = (x + dx).coerceIn(0, levelMap.width - 1)
+                val ny = (y + dy).coerceIn(0, levelMap.height - 1)
+                if (levelMap.getTile(nx, ny).isWalkable) {
+                    return Point3D(nx + 0.5f, ny + 0.5f, z)
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * Simple BFS grid pathfinder to calculate step-by-step waypoints avoiding walls on the map grid.
+     */
+    fun findGridPath(start: Point3D, target: Point3D, levelMap: GameLevelMap?): List<Point3D> {
+        if (levelMap == null) return listOf(target)
+
+        val startX = start.x.toInt().coerceIn(0, levelMap.width - 1)
+        val startY = start.y.toInt().coerceIn(0, levelMap.height - 1)
+        val targetX = target.x.toInt().coerceIn(0, levelMap.width - 1)
+        val targetY = target.y.toInt().coerceIn(0, levelMap.height - 1)
+
+        if (startX == targetX && startY == targetY) return listOf(target)
+
+        val queue = java.util.ArrayDeque<Pair<Int, Int>>()
+        val visited = mutableSetOf<Pair<Int, Int>>()
+        val parentMap = mutableMapOf<Pair<Int, Int>, Pair<Int, Int>>()
+
+        val startPair = Pair(startX, startY)
+        val targetPair = Pair(targetX, targetY)
+
+        queue.add(startPair)
+        visited.add(startPair)
+
+        val dirs = listOf(Pair(1, 0), Pair(-1, 0), Pair(0, 1), Pair(0, -1))
+        var found = false
+
+        while (queue.isNotEmpty()) {
+            val curr = queue.poll() ?: break
+            if (curr == targetPair) {
+                found = true
+                break
+            }
+
+            for ((dx, dy) in dirs) {
+                val nx = curr.first + dx
+                val ny = curr.second + dy
+                val nextPair = Pair(nx, ny)
+
+                if (nx in 0 until levelMap.width && ny in 0 until levelMap.height) {
+                    if (!visited.contains(nextPair) && levelMap.getTile(nx, ny).isWalkable) {
+                        visited.add(nextPair)
+                        parentMap[nextPair] = curr
+                        queue.add(nextPair)
+                    }
+                }
+            }
+        }
+
+        if (!found) return listOf(target)
+
+        val path = mutableListOf<Point3D>()
+        var curr: Pair<Int, Int>? = targetPair
+        while (curr != null && curr != startPair) {
+            path.add(0, Point3D(curr.first + 0.5f, curr.second + 0.5f, start.z))
+            curr = parentMap[curr]
+        }
+        return if (path.isEmpty()) listOf(target) else path
+    }
+
     fun updateEnemies(
         enemies: List<Enemy>,
         player: Player,
@@ -58,6 +181,11 @@ class StealthAiSystem {
             if (enemy.attackCooldown > 0) enemy.attackCooldown--
 
             if (enemy.pos.z.toInt() == currentZLevel) {
+                // Ensure patrol waypoints exist
+                if (enemy.patrolRoute.isEmpty() && enemy.calculatedWaypoints.isEmpty()) {
+                    enemy.calculatedWaypoints = calculateGridPatrolWaypoints(enemy.pos, levelMap)
+                }
+
                 val dist = enemy.pos.distanceTo(player.pos)
                 val isPlayerVisible = checkPlayerVisibility(enemy, player, dist, levelMap)
 
@@ -65,7 +193,7 @@ class StealthAiSystem {
                     if (enemy.hasLostTargetInAggro) {
                         enemy.hasLostTargetInAggro = false
                         enemy.aggroLostSearchTimer = 0f
-                        log("RE-ENGAGED: ${enemy.name} RE-SPOTTED TARGET")
+                        log("RE-ENGAGED: ${enemy.name} RE-SPOTTED TARGET IN LINE-OF-SIGHT")
                     }
                     if (enemy.isSearching && enemy.alertState != AlertState.ALERTED) {
                         enemy.isSearching = false
@@ -74,24 +202,25 @@ class StealthAiSystem {
                     }
 
                     val rate = when (enemy.alertState) {
-                        AlertState.PATROLLING -> 45f
-                        AlertState.SUSPICIOUS -> 75f
-                        AlertState.ALERTED -> 120f
+                        AlertState.PATROLLING -> 55f
+                        AlertState.SUSPICIOUS -> 85f
+                        AlertState.ALERTED -> 130f
                     }
                     val factor = player.getStealthFactor()
                     enemy.alertMeter = (enemy.alertMeter + rate * factor * dt).coerceAtMost(100f)
 
                     if (enemy.alertState == AlertState.PATROLLING && enemy.alertMeter > 25f) {
                         enemy.alertState = AlertState.SUSPICIOUS
-                        log("SUSPICIOUS: ${enemy.name} DETECTED MINOR ANOMALY")
+                        SoundManager.playStealthWarning()
+                        log("SUSPICIOUS: ${enemy.name} DETECTED PLAYER IN VISION CONE")
                     }
 
                     if (enemy.alertMeter >= 100f && enemy.alertState != AlertState.ALERTED) {
                         enemy.alertState = AlertState.ALERTED
                         enemy.hasLostTargetInAggro = false
                         enemy.aggroLostSearchTimer = 0f
-                        AudioManager.playAlert()
-                        log("ALERT! ${enemy.name} ENGAGED")
+                        SoundManager.playStealthDetectionAlert(1.2f)
+                        log("ALERT! ${enemy.name} ENGAGED TARGET (LINE-OF-SIGHT CONFIRMED)")
                     }
                     enemy.lastKnownPlayerPos = player.pos.copy()
                 } else {
@@ -184,6 +313,8 @@ class StealthAiSystem {
             AlertState.ALERTED -> 2.6f
         }
 
+        val activeWaypoints = if (enemy.patrolRoute.isNotEmpty()) enemy.patrolRoute else enemy.calculatedWaypoints
+
         when (enemy.alertState) {
             AlertState.PATROLLING -> {
                 if (enemy.isSearching) {
@@ -193,21 +324,21 @@ class StealthAiSystem {
                     if (enemy.pauseTimer <= 0f) {
                         enemy.isSearching = false
                         enemy.pauseTimer = 0f
-                        if (enemy.patrolRoute.isNotEmpty()) {
-                            enemy.patrolIndex = (enemy.patrolIndex + 1) % enemy.patrolRoute.size
+                        if (activeWaypoints.isNotEmpty()) {
+                            enemy.patrolIndex = (enemy.patrolIndex + 1) % activeWaypoints.size
                         }
                     }
                 } else {
-                    val target = enemy.patrolRoute.getOrNull(enemy.patrolIndex) ?: enemy.pos
-                    val dx = target.x - enemy.pos.x
-                    val dy = target.y - enemy.pos.y
+                    val targetWaypoint = activeWaypoints.getOrNull(enemy.patrolIndex) ?: enemy.pos
+                    val dx = targetWaypoint.x - enemy.pos.x
+                    val dy = targetWaypoint.y - enemy.pos.y
                     val d = sqrt(dx * dx + dy * dy)
 
-                    if (d > 0.15f) {
+                    if (d > 0.2f) {
                         enemy.pos.x += (dx / d) * speed * dt
                         enemy.pos.y += (dy / d) * speed * dt
                         enemy.directionAngle = atan2(dy, dx)
-                    } else if (enemy.patrolRoute.isNotEmpty()) {
+                    } else if (activeWaypoints.isNotEmpty()) {
                         enemy.isSearching = true
                         enemy.pauseTimer = 2.0f
                         enemy.searchTimer = 0f
@@ -226,10 +357,10 @@ class StealthAiSystem {
                         enemy.alertState = AlertState.PATROLLING
                         enemy.alertMeter = 0f
                         enemy.lastKnownPlayerPos = null
-                        log("${enemy.name} SEARCH COMPLETED. RESUMING PATROL.")
+                        log("${enemy.name} SEARCH COMPLETED. RESUMING GRID PATROL WAYPOINTS.")
                     }
                 } else {
-                    val target = enemy.lastKnownPlayerPos ?: (enemy.patrolRoute.getOrNull(enemy.patrolIndex) ?: enemy.pos)
+                    val target = enemy.lastKnownPlayerPos ?: (activeWaypoints.getOrNull(enemy.patrolIndex) ?: enemy.pos)
                     val dx = target.x - enemy.pos.x
                     val dy = target.y - enemy.pos.y
                     val d = sqrt(dx * dx + dy * dy)
@@ -243,7 +374,7 @@ class StealthAiSystem {
                         enemy.suspicionTimer = 4.0f
                         enemy.searchTimer = 0f
                         enemy.basePatrolAngle = enemy.directionAngle
-                        log("${enemy.name} ARRIVED AT ANOMALY. SCANNING...")
+                        log("${enemy.name} ARRIVED AT ANOMALY. SCANNING WAYPOINT GRID AREA...")
                     }
                 }
             }

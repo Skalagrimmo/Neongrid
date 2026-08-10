@@ -45,28 +45,44 @@ object IsoCharacterRenderer {
             )
         }
 
+        val celSettings = gbcSettings.celShadingSettings
+        val isCel = gbcSettings.isCelShadingEnabled && celSettings.isEnabled
+
         // 8-Bit Cyber Body Suit
-        val suitColor = if (player.isSneaking) palette.wallAccent else palette.playerBody
+        val rawSuitColor = if (player.isSneaking) palette.wallAccent else palette.playerBody
+        val suitColor = if (isCel) CelShadingEngine.applyCelShading(rawSuitColor, lightFactor = 1.10f, settings = celSettings) else rawSuitColor
+
         drawScope.drawCircle(
             color = suitColor.copy(alpha = baseAlpha),
             radius = 14f,
             center = isoPos - Offset(0f, 16f)
         )
-        val outlineCol = if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else Color.White
+        val outlineCol = if (isCel) celSettings.inkOutlineColor else if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else Color.White
+        val outlineWidth = if (isCel) celSettings.inkOutlineThickness + 0.5f else 2f
         drawScope.drawCircle(
             color = outlineCol.copy(alpha = baseAlpha),
             radius = 14f,
             center = isoPos - Offset(0f, 16f),
-            style = Stroke(width = 2f)
+            style = Stroke(width = outlineWidth)
         )
 
         // GBC Cyber Visor Helmet
-        val visorColor = if (player.isInvisible) palette.wallAccent else palette.playerVisor
+        val rawVisorColor = if (player.isInvisible) palette.wallAccent else palette.playerVisor
+        val visorColor = if (isCel) CelShadingEngine.applyCelShading(rawVisorColor, lightFactor = 1.25f, settings = celSettings) else rawVisorColor
         drawScope.drawCircle(
             color = visorColor.copy(alpha = baseAlpha),
             radius = 6f,
             center = isoPos - Offset(0f, 20f)
         )
+
+        // Cel-Shaded Specular Highlight Spot on Helmet
+        if (isCel) {
+            drawScope.drawCircle(
+                color = Color.White.copy(alpha = 0.85f * baseAlpha),
+                radius = 2f,
+                center = isoPos - Offset(2f, 22f)
+            )
+        }
 
         // 8-Bit Direction Arrow
         val moveLength = kotlin.math.sqrt(lastMoveX * lastMoveX + lastMoveY * lastMoveY)
@@ -110,12 +126,17 @@ object IsoCharacterRenderer {
             center = isoPos + Offset(0f, 4f)
         )
 
+        val celSettings = gbcSettings.celShadingSettings
+        val isCel = gbcSettings.isCelShadingEnabled && celSettings.isEnabled
+
         // Enemy Color by Alert State (GBC Palette Mapping)
-        val color = when (enemy.alertState) {
+        val rawColor = when (enemy.alertState) {
             AlertState.PATROLLING -> palette.enemyPatrol
             AlertState.SUSPICIOUS -> palette.enemySuspicious
             AlertState.ALERTED -> palette.enemyAlert
         }
+
+        val color = if (isCel) CelShadingEngine.applyCelShading(rawColor, lightFactor = 1.15f, settings = celSettings) else rawColor
 
         val bodyRadius = if (enemy.type == "Boss") 20f else 12f
         drawScope.drawCircle(
@@ -123,12 +144,13 @@ object IsoCharacterRenderer {
             radius = bodyRadius,
             center = isoPos - Offset(0f, 14f)
         )
-        val outlineCol = if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else Color.White
+        val outlineCol = if (isCel) celSettings.inkOutlineColor else if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else Color.White
+        val outlineWidth = if (isCel) celSettings.inkOutlineThickness + 0.5f else 2f
         drawScope.drawCircle(
             color = outlineCol,
             radius = bodyRadius,
             center = isoPos - Offset(0f, 14f),
-            style = Stroke(width = 2f)
+            style = Stroke(width = outlineWidth)
         )
 
         // Direction Indicator Line

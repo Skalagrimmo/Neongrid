@@ -50,9 +50,23 @@ interface PlayerSaveStateDao {
     suspend fun deleteSaveState()
 }
 
-@Database(entities = [PlayerSaveState::class], version = 3, exportSchema = false)
+@Database(
+    entities = [
+        PlayerSaveState::class,
+        PlayerStatsEntity::class,
+        InventoryItemEntity::class,
+        UnlockedSkillEntity::class,
+        CustomLoadoutEntity::class
+    ],
+    version = 5,
+    exportSchema = false
+)
 abstract class GameDatabase : RoomDatabase() {
     abstract fun saveStateDao(): PlayerSaveStateDao
+    abstract fun playerStatsDao(): PlayerStatsDao
+    abstract fun inventoryItemDao(): InventoryItemDao
+    abstract fun unlockedSkillDao(): UnlockedSkillDao
+    abstract fun customLoadoutDao(): CustomLoadoutDao
 
     companion object {
         @Volatile
@@ -65,7 +79,7 @@ abstract class GameDatabase : RoomDatabase() {
                     GameDatabase::class.java,
                     "neongrid_rpg_db"
                 )
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance
                 instance
@@ -74,8 +88,14 @@ abstract class GameDatabase : RoomDatabase() {
     }
 }
 
-class GameRepository(private val saveStateDao: PlayerSaveStateDao) {
+class GameRepository(
+    private val saveStateDao: PlayerSaveStateDao,
+    private val customLoadoutDao: CustomLoadoutDao? = null,
+    private val inventoryItemDao: InventoryItemDao? = null
+) {
     val saveState: Flow<PlayerSaveState?> = saveStateDao.getSaveState()
+    val allLoadouts: Flow<List<CustomLoadoutEntity>> = customLoadoutDao?.getAllLoadouts() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    val allInventoryItems: Flow<List<InventoryItemEntity>> = inventoryItemDao?.getAllInventoryItems() ?: kotlinx.coroutines.flow.flowOf(emptyList())
 
     suspend fun saveGame(state: PlayerSaveState) {
         saveStateDao.insertSaveState(state)
@@ -83,5 +103,17 @@ class GameRepository(private val saveStateDao: PlayerSaveStateDao) {
 
     suspend fun clearSave() {
         saveStateDao.deleteSaveState()
+    }
+
+    suspend fun saveCustomLoadout(loadout: CustomLoadoutEntity) {
+        customLoadoutDao?.insertLoadout(loadout)
+    }
+
+    suspend fun deleteCustomLoadout(id: Int) {
+        customLoadoutDao?.deleteLoadout(id)
+    }
+
+    suspend fun saveInventoryItem(item: InventoryItemEntity) {
+        inventoryItemDao?.insertOrUpdateItem(item)
     }
 }

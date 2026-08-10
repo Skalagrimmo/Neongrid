@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,6 +47,7 @@ fun GameHud(
     // UI state toggles
     var isConsoleExpanded by remember { mutableStateOf(false) }
     var isQuestExpanded by remember { mutableStateOf(true) }
+    var isFullHudExpanded by remember { mutableStateOf(false) }
 
     // Dynamic operative class title
     val className = if (player.unlockedSkills.contains("ronin_ultimate") || player.unlockedSkills.contains("ronin_crit")) {
@@ -187,7 +189,7 @@ fun GameHud(
                             Text("${player.health.toInt()}/${player.maxHealth.toInt()}", fontSize = 7.5.sp, color = ImmersiveSlateLight, fontFamily = FontFamily.Monospace)
                         }
                         LinearProgressIndicator(
-                            progress = (player.health / player.maxHealth).coerceIn(0f, 1f),
+                            progress = { (player.health / player.maxHealth).coerceIn(0f, 1f) },
                             color = ImmersiveRed,
                             trackColor = ImmersiveBgDark,
                             modifier = Modifier
@@ -205,7 +207,7 @@ fun GameHud(
                             Text("${player.energy.toInt()}/${player.maxEnergy.toInt()}", fontSize = 7.5.sp, color = ImmersiveSlateLight, fontFamily = FontFamily.Monospace)
                         }
                         LinearProgressIndicator(
-                            progress = (player.energy / player.maxEnergy).coerceIn(0f, 1f),
+                            progress = { (player.energy / player.maxEnergy).coerceIn(0f, 1f) },
                             color = ImmersiveBlue,
                             trackColor = ImmersiveBgDark,
                             modifier = Modifier
@@ -358,7 +360,7 @@ fun GameHud(
                                         }
                                     }
 
-                                    Divider(color = Color(0x33FFFFFF))
+                                    HorizontalDivider(color = Color(0x33FFFFFF))
 
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -395,6 +397,60 @@ fun GameHud(
                                             onCheckedChange = { viewModel.toggleGbcScanlines() }
                                         )
                                     }
+
+                                    HorizontalDivider(color = Color(0x33FFFFFF))
+
+                                    // Cel-Shading Technology Section
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text("CEL-SHADING ENGINE", color = ImmersiveGreen, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                            Text("Toon/Comic Banded Shading", color = ImmersiveSlateMuted, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
+                                        }
+                                        Switch(
+                                            checked = gbcSettings.isCelShadingEnabled,
+                                            onCheckedChange = { viewModel.toggleCelShading() }
+                                        )
+                                    }
+
+                                    if (gbcSettings.isCelShadingEnabled) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text("CEL BANDING LEVEL:", color = ImmersiveSlateLight, fontSize = 9.5.sp, fontFamily = FontFamily.Monospace)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                val bandsList = listOf(2 to "2-BAND RETRO", 3 to "3-BAND ANIME", 4 to "4-BAND COMIC")
+                                                bandsList.forEach { (b, label) ->
+                                                    val isSel = gbcSettings.celShadingSettings.bands == b
+                                                    Button(
+                                                        onClick = { viewModel.setCelShadingBands(b) },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = if (isSel) ImmersiveGreen else ImmersiveBgHeader),
+                                                        modifier = Modifier.weight(1f).height(28.dp),
+                                                        contentPadding = PaddingValues(0.dp)
+                                                    ) {
+                                                        Text(label, fontSize = 8.sp, color = if (isSel) Color.Black else Color.White, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            }
+
+                                            Text("INK OUTLINE THICKNESS:", color = ImmersiveSlateLight, fontSize = 9.5.sp, fontFamily = FontFamily.Monospace)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                val thicknessList = listOf(1.5f to "THIN (1.5px)", 2.5f to "BOLD (2.5px)", 3.5f to "HEAVY (3.5px)")
+                                                thicknessList.forEach { (th, label) ->
+                                                    val isSel = kotlin.math.abs(gbcSettings.celShadingSettings.inkOutlineThickness - th) < 0.2f
+                                                    Button(
+                                                        onClick = { viewModel.setCelInkOutlineThickness(th) },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = if (isSel) ImmersiveLavender else ImmersiveBgHeader),
+                                                        modifier = Modifier.weight(1f).height(28.dp),
+                                                        contentPadding = PaddingValues(0.dp)
+                                                    ) {
+                                                        Text(label, fontSize = 8.sp, color = if (isSel) Color.Black else Color.White, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             },
                             confirmButton = {
@@ -419,6 +475,22 @@ fun GameHud(
                         Icon(Icons.Default.Settings, contentDescription = "Gear", tint = ImmersiveAmber, modifier = Modifier.size(13.dp))
                         Spacer(modifier = Modifier.width(2.dp))
                         Text("GEAR", fontSize = 9.5.sp, fontFamily = FontFamily.Monospace, color = ImmersiveAmber)
+                    }
+
+                    // Real-time Heads-Up Display (HUD) Matrix button
+                    Button(
+                        onClick = { isFullHudExpanded = !isFullHudExpanded },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isFullHudExpanded) ImmersiveBgDark else ImmersiveBgHeader),
+                        border = BorderStroke(1.dp, if (isFullHudExpanded) ImmersiveGreen else ImmersiveLavender),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        modifier = Modifier
+                            .height(30.dp)
+                            .testTag("hud_matrix_expand_button")
+                    ) {
+                        Icon(Icons.Default.MonitorHeart, contentDescription = "HUD Matrix", tint = if (isFullHudExpanded) ImmersiveGreen else ImmersiveLavender, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("HUD", fontSize = 9.5.sp, fontFamily = FontFamily.Monospace, color = if (isFullHudExpanded) ImmersiveGreen else ImmersiveLavender)
                     }
 
                     // Skills Upgrades button
@@ -448,9 +520,129 @@ fun GameHud(
                             .height(30.dp)
                             .testTag("hud_menu_button")
                     ) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = "Menu", tint = ImmersiveRed, modifier = Modifier.size(13.dp))
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Menu", tint = ImmersiveRed, modifier = Modifier.size(13.dp))
                         Spacer(modifier = Modifier.width(2.dp))
                         Text("HUB", fontSize = 9.5.sp, fontFamily = FontFamily.Monospace, color = ImmersiveRed)
+                    }
+                }
+            }
+        }
+
+        // Expanded Real-Time Heads-Up Display Overlay Modal
+        if (isFullHudExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(ImmersiveBgDark.copy(alpha = 0.85f))
+                    .clickable { isFullHudExpanded = false }
+                    .padding(top = 54.dp, start = 12.dp, end = 12.dp, bottom = 12.dp),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = ImmersiveBgHeader),
+                    border = BorderStroke(1.5.dp, ImmersiveGreen),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = false) {}
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.MonitorHeart, contentDescription = null, tint = ImmersiveGreen)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "REAL-TIME HEADS-UP DISPLAY (HUD)",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            IconButton(onClick = { isFullHudExpanded = false }) {
+                                Icon(Icons.Default.Close, contentDescription = "Close HUD", tint = Color.White)
+                            }
+                        }
+
+                        // Compute active stealth stance and state for character HUD
+                        val currentStealthState = com.example.stealth.StealthState(
+                            stance = if (player.isSneaking) com.example.stealth.Stance.CROUCHING else com.example.stealth.Stance.STANDING,
+                            detectionStatus = when {
+                                player.health <= 0f -> com.example.stealth.DetectionStatus.COMPROMISED
+                                player.isSneaking -> com.example.stealth.DetectionStatus.HIDDEN
+                                else -> com.example.stealth.DetectionStatus.SUSPECTED
+                            },
+                            visibilityLevel = if (player.isSneaking) 20f else 65f,
+                            detectionProgress = if (player.isSneaking) 15f else 45f,
+                            noiseLevel = if (player.isSneaking) 10f else 40f
+                        )
+
+                        // Compute dynamic active buffs from player's inventory, equipped gear and active skills
+                        val liveBuffs = mutableListOf<ActiveBuffUiModel>()
+                        if (player.isInvisible) {
+                            liveBuffs.add(
+                                ActiveBuffUiModel(
+                                    id = "cloak",
+                                    name = "OPTICAL CLOAK",
+                                    icon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = ImmersiveGreen, modifier = Modifier.size(11.dp)) },
+                                    isBuff = true,
+                                    durationSeconds = 10f,
+                                    remainingSeconds = player.invisibleTimer.coerceAtLeast(1f),
+                                    modifierText = "+100% STEALTH"
+                                )
+                            )
+                        }
+                        if (player.unlockedSkills.contains("ronin_base")) {
+                            liveBuffs.add(
+                                ActiveBuffUiModel(
+                                    id = "ronin_blade",
+                                    name = "BLADE MASTERY",
+                                    icon = { Icon(Icons.Default.FlashOn, contentDescription = null, tint = ImmersiveAmber, modifier = Modifier.size(11.dp)) },
+                                    isBuff = true,
+                                    durationSeconds = 60f,
+                                    remainingSeconds = 48f,
+                                    modifierText = "+15% CRIT"
+                                )
+                            )
+                        }
+                        if (player.inventory.healthPacks > 0) {
+                            liveBuffs.add(
+                                ActiveBuffUiModel(
+                                    id = "nano_med",
+                                    name = "NANO INJECTOR",
+                                    icon = { Icon(Icons.Default.AddReaction, contentDescription = null, tint = ImmersiveCyan, modifier = Modifier.size(11.dp)) },
+                                    isBuff = true,
+                                    durationSeconds = 30f,
+                                    remainingSeconds = 25f,
+                                    modifierText = "+5 HP/s"
+                                )
+                            )
+                        }
+
+                        CharacterHeadsUpDisplay(
+                            character = com.example.data.PlayerCharacter(
+                                name = className,
+                                health = player.health.toInt(),
+                                maxHealth = player.maxHealth.toInt(),
+                                stamina = player.energy.toInt(),
+                                maxStamina = player.maxEnergy.toInt()
+                            ),
+                            stealthState = currentStealthState,
+                            activeBuffs = liveBuffs,
+                            onHealthChange = { newHp ->
+                                player.health = newHp.toFloat()
+                            },
+                            onStanceChange = { newStance ->
+                                player.isSneaking = (newStance == com.example.stealth.Stance.CROUCHING || newStance == com.example.stealth.Stance.SLIDING)
+                            }
+                        )
                     }
                 }
             }
@@ -519,7 +711,7 @@ fun GameHud(
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     LinearProgressIndicator(
-                        progress = player.quest.progressRatio,
+                        progress = { player.quest.progressRatio },
                         color = if (player.quest.isCompleted) ImmersiveGreen else ImmersiveLavender,
                         trackColor = ImmersiveBgDark,
                         modifier = Modifier
@@ -607,7 +799,7 @@ fun GameHud(
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
-                Divider(color = Color(0x0DFFFFFF), thickness = 1.dp)
+                HorizontalDivider(color = Color(0x0DFFFFFF), thickness = 1.dp)
                 Spacer(modifier = Modifier.height(4.dp))
 
                 logs.takeLast(3).forEach { log ->
@@ -655,7 +847,7 @@ fun GameHud(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     LinearProgressIndicator(
-                        progress = viewModel.hackProgress,
+                        progress = { viewModel.hackProgress },
                         color = ImmersiveLavender,
                         trackColor = ImmersiveBgDark,
                         modifier = Modifier

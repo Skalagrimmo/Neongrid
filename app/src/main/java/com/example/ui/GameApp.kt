@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.*
 import com.example.ui.theme.*
+import kotlin.math.abs
 
 @Composable
 fun GameApp(
@@ -64,6 +65,27 @@ fun GameApp(
                             onMovePlayer = { dx, dy ->
                                 viewModel.movePlayer(dx, dy)
                             }
+                        )
+
+                        // Stealth & Visual Radar Overlay
+                        val player = viewModel.player
+                        val enemies = viewModel.enemies
+                        val overlayData = remember(enemies, player.pos, player.isSneaking) {
+                            val activeLevelEnemies = enemies.filter { abs(it.pos.z - player.pos.z) < 0.5f }
+                            val closestDist = activeLevelEnemies.minOfOrNull { it.pos.distanceTo(player.pos) } ?: 999f
+                            val proximity = (1.0f - (closestDist / 12f)).coerceIn(0f, 1f)
+                            val stealth = if (player.isSneaking) 0.85f else 0.45f
+                            Triple(stealth, proximity, closestDist)
+                        }
+
+                        StealthVisibilityOverlay(
+                            stealthLevel = overlayData.first,
+                            proximityToEnemy = overlayData.second,
+                            isNearCover = false,
+                            isSneaking = player.isSneaking,
+                            enemyDistance = if (overlayData.third < 25f) overlayData.third else null,
+                            playerPos = player.pos,
+                            enemies = enemies
                         )
 
                         // Top Overlay gameplay interface HUD

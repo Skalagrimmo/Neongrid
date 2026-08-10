@@ -1,15 +1,15 @@
 package com.example.ui
 
-import androidx.compose.foundation.Canvas
+import android.opengl.GLSurfaceView
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.viewinterop.AndroidView
 import com.example.model.*
-import com.example.render.IsoRenderer
+import com.example.render.GlIsoRenderer
 import kotlinx.coroutines.isActive
 import kotlin.math.*
 
@@ -47,8 +47,6 @@ fun GameCanvas(
     val tileHalfHeight = tileHeight / 2f
     val zHeightOffset = 50f
 
-    val drawPath = remember { Path() }
-
     fun toIso(x: Float, y: Float, z: Float): Offset {
         val screenX = (x - y) * tileHalfWidth
         val screenY = (x + y) * tileHalfHeight - z * zHeightOffset
@@ -63,7 +61,9 @@ fun GameCanvas(
 
     val enemyRenderPosMap = remember { mutableStateMapOf<String, Offset>() }
 
-    LaunchedEffect(player.pos.x, player.pos.y, viewModel.currentZLevel) {
+    val glRenderer = remember { GlIsoRenderer() }
+
+    LaunchedEffect(player.pos.x, player.pos.y, viewModel.currentZLevel, viewModel.gbcGraphicsSettings) {
         var lastNanos = System.nanoTime()
         while (isActive) {
             withFrameNanos { frameNanos ->
@@ -106,6 +106,28 @@ fun GameCanvas(
                     renderCamX += (pIso.x - renderCamX) * (10f * dt)
                     renderCamY += (pIso.y - renderCamY) * (10f * dt)
                 }
+
+                // Push frame parameters to OpenGL ES 3.0 renderer
+                glRenderer.currentZLevel = viewModel.currentZLevel
+                glRenderer.levelMap = levelMap
+                glRenderer.gameLevels = viewModel.gameLevels
+                glRenderer.player = player
+                glRenderer.renderPlayerX = renderPlayerX
+                glRenderer.renderPlayerY = renderPlayerY
+                glRenderer.enemies = enemies
+                glRenderer.enemyRenderPosMap = enemyRenderPosMap
+                glRenderer.noiseRipples = noiseRipples
+                glRenderer.projectiles = projectiles
+                glRenderer.exploredArray = exploredArray
+                glRenderer.isTacticalOverlayActive = viewModel.isTacticalOverlayActive
+                glRenderer.lastMoveX = viewModel.lastMoveX
+                glRenderer.lastMoveY = viewModel.lastMoveY
+                glRenderer.tileWidth = tileWidth
+                glRenderer.zHeightOffset = zHeightOffset
+                glRenderer.renderCamX = renderCamX
+                glRenderer.renderCamY = renderCamY
+                glRenderer.isLowSpecMode = viewModel.isLowSpecPerformanceMode
+                glRenderer.gbcSettings = viewModel.gbcGraphicsSettings
             }
         }
     }
@@ -137,42 +159,26 @@ fun GameCanvas(
                 )
             }
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val centerOffsetX = size.width / 2f - renderCamX
-            val centerOffsetY = size.height / 2f - renderCamY
+        AndroidView(
+            factory = { context ->
+                GLSurfaceView(context).apply {
+                    setEGLContextClientVersion(3)
+                    setEGLConfigChooser(8, 8, 8, 8, 16, 0)
+                    setRenderer(glRenderer)
+                    renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
 
-            drawContext.canvas.save()
-            drawContext.canvas.translate(centerOffsetX, centerOffsetY)
-
-            IsoRenderer.renderScene(
-                drawScope = this,
-                drawPath = drawPath,
-                currentZLevel = viewModel.currentZLevel,
-                levelMap = levelMap,
-                gameLevels = viewModel.gameLevels,
-                player = player,
-                renderPlayerX = renderPlayerX,
-                renderPlayerY = renderPlayerY,
-                enemies = enemies,
-                enemyRenderPosMap = enemyRenderPosMap,
-                noiseRipples = noiseRipples,
-                projectiles = projectiles,
-                exploredArray = exploredArray,
-                isTacticalOverlayActive = viewModel.isTacticalOverlayActive,
-                lastMoveX = viewModel.lastMoveX,
-                lastMoveY = viewModel.lastMoveY,
-                tileWidth = tileWidth,
-                zHeightOffset = zHeightOffset,
-                canvasWidth = size.width,
-                canvasHeight = size.height,
-                centerOffsetX = centerOffsetX,
-                centerOffsetY = centerOffsetY,
-                isLowSpecMode = viewModel.isLowSpecPerformanceMode,
-                gbcSettings = viewModel.gbcGraphicsSettings,
-                toIsoFunc = ::toIso
-            )
-
-            drawContext.canvas.restore()
-        }
+        // Grid-based action & movement range overlay with enemy threat zones
+        IsoActionGridOverlay(
+            viewModel = viewModel,
+            tileWidth = tileWidth,
+            zHeightOffset = zHeightOffset,
+            renderCamX = renderCamX,
+            renderCamY = renderCamY
+        )
     }
 }
+

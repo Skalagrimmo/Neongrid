@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.CustomLoadoutEntity
 import com.example.data.GameDatabase
 import com.example.data.GameRepository
 import com.example.data.PlayerSaveState
@@ -16,12 +17,32 @@ import com.example.engine.MovementSystem
 import com.example.engine.StealthAiSystem
 import com.example.model.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlin.math.*
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = GameDatabase.getDatabase(application)
-    private val repository = GameRepository(db.saveStateDao())
+    private val repository = GameRepository(db.saveStateDao(), db.customLoadoutDao(), db.inventoryItemDao())
+
+    val customLoadouts: StateFlow<List<CustomLoadoutEntity>> = repository.allLoadouts
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    init {
+        viewModelScope.launch {
+            repository.allLoadouts.collect { loadouts ->
+                if (loadouts.isEmpty()) {
+                    seedDefaultLoadouts()
+                }
+            }
+        }
+    }
 
     val mapSize = 35
 
@@ -77,6 +98,27 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         logToConsole("GBC GRAPHICS: PIXEL OUTLINES [${if (gbcGraphicsSettings.isPixelOutlineEnabled) "ACTIVE" else "OFF"}]")
     }
 
+    fun toggleCelShading() {
+        val newEnabled = !gbcGraphicsSettings.isCelShadingEnabled
+        gbcGraphicsSettings = gbcGraphicsSettings.copy(
+            isCelShadingEnabled = newEnabled,
+            celShadingSettings = gbcGraphicsSettings.celShadingSettings.copy(isEnabled = newEnabled)
+        )
+        logToConsole("CEL-SHADING SYSTEM: [${if (newEnabled) "ACTIVE" else "DISABLED"}]")
+    }
+
+    fun setCelShadingBands(bands: Int) {
+        val newSettings = gbcGraphicsSettings.celShadingSettings.copy(bands = bands)
+        gbcGraphicsSettings = gbcGraphicsSettings.copy(celShadingSettings = newSettings)
+        logToConsole("CEL-SHADING BANDS: SET TO $bands-BAND QUANTIZATION")
+    }
+
+    fun setCelInkOutlineThickness(thickness: Float) {
+        val newSettings = gbcGraphicsSettings.celShadingSettings.copy(inkOutlineThickness = thickness)
+        gbcGraphicsSettings = gbcGraphicsSettings.copy(celShadingSettings = newSettings)
+        logToConsole("CEL-SHADING INK OUTLINE: SET TO ${thickness}PX")
+    }
+
     // Active Game Entities & State
     var player by mutableStateOf(Player())
         private set
@@ -113,6 +155,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     var isTacticalOverlayActive by mutableStateOf(false)
+        private set
+
+    var activeGridAction by mutableStateOf(GridActionType.NONE)
+        private set
+
+    var hoveredTargetTile by mutableStateOf<GridPos?>(null)
+        private set
+
+    var isThreatZoneOverlayVisible by mutableStateOf(true)
+        private set
+
+    var isVisionConeOverlayVisible by mutableStateOf(true)
+        private set
+
+    var isMovementRangeOverlayVisible by mutableStateOf(true)
         private set
 
     var hackTerminalPos by mutableStateOf<GridPos?>(null)
@@ -556,6 +613,69 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         logToConsole("TACTICAL OVERLAY: ${if (isTacticalOverlayActive) "ACTIVE" else "INACTIVE"}")
     }
 
+    fun setGridAction(action: GridActionType) {
+        if (activeGridAction == action) {
+            activeGridAction = GridActionType.NONE
+            logToConsole("ACTION DESELECTED")
+        } else {
+            activeGridAction = action
+            isTacticalOverlayActive = true
+            AudioManager.playInteract()
+            logToConsole("GRID ACTION INITIATED: ${action.displayName}")
+        }
+    }
+
+    fun clearAction() {
+        activeGridAction = GridActionType.NONE
+        hoveredTargetTile = null
+    }
+
+    fun setHoveredTile(pos: GridPos?) {
+        hoveredTargetTile = pos
+    }
+
+    fun toggleThreatZoneOverlay() {
+        isThreatZoneOverlayVisible = !isThreatZoneOverlayVisible
+        AudioManager.playInteract()
+        logToConsole("THREAT ZONES: ${if (isThreatZoneOverlayVisible) "VISIBLE" else "HIDDEN"}")
+    }
+
+    fun toggleVisionConeOverlay() {
+        isVisionConeOverlayVisible = !isVisionConeOverlayVisible
+        AudioManager.playInteract()
+        logToConsole("VISION CONES: ${if (isVisionConeOverlayVisible) "VISIBLE" else "HIDDEN"}")
+    }
+
+    fun toggleMovementRangeOverlay() {
+        isMovementRangeOverlayVisible = !isMovementRangeOverlayVisible
+        AudioManager.playInteract()
+        logToConsole("MOVEMENT RANGE: ${if (isMovementRangeOverlayVisible) "VISIBLE" else "HIDDEN"}")
+    }
+
+    fun executeSelectedGridAction(target: GridPos) {
+        when (activeGridAction) {
+            GridActionType.MOVE -> {
+                val dx = target.x - player.pos.x
+                val dy = target.y - player.pos.y
+                movePlayer(dx, dy)
+                logToConsole("GRID MOVE EXECUTED -> (${target.x}, ${target.y})")
+            }
+            GridActionType.ATTACK -> {
+                executeAttack()
+            }
+            GridActionType.HACK -> {
+                executeInteract()
+            }
+            GridActionType.SKILL -> {
+                val firstSkill = player.unlockedSkills.firstOrNull() ?: "ronin_base"
+                triggerActiveSkill(firstSkill)
+            }
+            GridActionType.NONE -> {}
+        }
+        activeGridAction = GridActionType.NONE
+        hoveredTargetTile = null
+    }
+
     fun executeAttack() {
         if (isGameOver || isGameWon || isHackingActive) return
         combatSystem.executeAttack(player, enemies, currentZLevel, lastMoveX, lastMoveY, activeProjectiles, noiseRipples)
@@ -657,11 +777,31 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun grantSkillPoint(amount: Int = 1) {
+        player = player.copy(skillPoints = player.skillPoints + amount)
+        AudioManager.playLevelUp()
+        logToConsole("SIMULATION: GRANTED +$amount SKILL POINTS")
+        saveGameProgress()
+    }
+
+    fun respecSkills() {
+        val totalRefund = skillNodes.filter { it.isUnlocked }.sumOf { it.costPoints }
+        player = player.copy(
+            skillPoints = player.skillPoints + totalRefund,
+            unlockedSkills = emptySet()
+        )
+        skillNodes = skillNodes.map { it.copy(isUnlocked = false) }
+        AudioManager.playInteract()
+        logToConsole("NEURAL MATRIX RESPEC: REFUNDED +$totalRefund SP")
+        saveGameProgress()
+    }
+
     fun equipItem(item: EquipmentItem) {
         var nextPlayer = when (item.type) {
             EquipmentType.WEAPON -> player.copy(equippedWeapon = item)
             EquipmentType.CORE -> player.copy(equippedCore = item)
             EquipmentType.SYSTEM -> player.copy(equippedSystem = item)
+            else -> player.copy(equippedSystem = item)
         }
 
         val totalHealthBoost = nextPlayer.equippedWeapon.statBoostHealth + nextPlayer.equippedCore.statBoostHealth + nextPlayer.equippedSystem.statBoostHealth
@@ -760,6 +900,95 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             lastExploredGridY = triple.second
             lastExploredZ = triple.third
             saveGameProgress()
+        }
+    }
+
+    fun saveCurrentLoadoutAsCustom(loadoutName: String) {
+        val nameToUse = if (loadoutName.isBlank()) "PRESET #${(System.currentTimeMillis() % 1000)}" else loadoutName
+        val derivedClass = when {
+            player.unlockedSkills.contains("ronin_base") -> "CYBER_RONIN"
+            player.unlockedSkills.contains("tech_base") -> "TECH_NECROMANCER"
+            player.unlockedSkills.contains("ghost_base") -> "GHOST_INFILTRATOR"
+            else -> "CYBER_RONIN"
+        }
+
+        viewModelScope.launch {
+            repository.saveCustomLoadout(
+                CustomLoadoutEntity(
+                    name = nameToUse,
+                    weaponId = player.equippedWeapon.id,
+                    weaponName = player.equippedWeapon.name,
+                    coreId = player.equippedCore.id,
+                    coreName = player.equippedCore.name,
+                    systemId = player.equippedSystem.id,
+                    systemName = player.equippedSystem.name,
+                    characterClass = derivedClass
+                )
+            )
+            AudioManager.playInteract()
+            logToConsole("ROOM DB: SAVED CUSTOM LOADOUT '$nameToUse'")
+        }
+    }
+
+    fun applyCustomLoadout(loadout: CustomLoadoutEntity) {
+        val weapon = EquipmentItem.ALL_ITEMS.find { it.id == loadout.weaponId } ?: player.equippedWeapon
+        val core = EquipmentItem.ALL_ITEMS.find { it.id == loadout.coreId } ?: player.equippedCore
+        val system = EquipmentItem.ALL_ITEMS.find { it.id == loadout.systemId } ?: player.equippedSystem
+
+        equipItem(weapon)
+        equipItem(core)
+        equipItem(system)
+
+        AudioManager.playInteract()
+        logToConsole("ROOM DB: LOADED PRESET '${loadout.name}'")
+    }
+
+    fun deleteCustomLoadout(loadoutId: Int) {
+        viewModelScope.launch {
+            repository.deleteCustomLoadout(loadoutId)
+            AudioManager.playInteract()
+            logToConsole("ROOM DB: REMOVED LOADOUT PRESET #$loadoutId")
+        }
+    }
+
+    private fun seedDefaultLoadouts() {
+        viewModelScope.launch {
+            repository.saveCustomLoadout(
+                CustomLoadoutEntity(
+                    name = "RONIN MELEE STRIKER",
+                    weaponId = "nano_blade",
+                    weaponName = "Nano-Edge Katana",
+                    coreId = "force_shield",
+                    coreName = "Hard-Light Kinetic Barrier",
+                    systemId = "targeting_chip",
+                    systemName = "Ocular Combat Predictor",
+                    characterClass = "CYBER_RONIN"
+                )
+            )
+            repository.saveCustomLoadout(
+                CustomLoadoutEntity(
+                    name = "TECH NECRO OVERLOAD",
+                    weaponId = "plasma_rifle",
+                    weaponName = "Hyperion Plasma Launcher",
+                    coreId = "overclock_core",
+                    coreName = "Thermal Overclock Core",
+                    systemId = "drone_controller",
+                    systemName = "Autonomous Sentry Link",
+                    characterClass = "TECH_NECROMANCER"
+                )
+            )
+            repository.saveCustomLoadout(
+                CustomLoadoutEntity(
+                    name = "GHOST INFILTRATOR",
+                    weaponId = "vibro_dagger",
+                    weaponName = "High-Frequency Vibro-Dagger",
+                    coreId = "stealth_cloak",
+                    coreName = "Phase-Shift Stealth Field",
+                    systemId = "stealth_dampener",
+                    systemName = "Acoustic Noise Suppressor",
+                    characterClass = "GHOST_INFILTRATOR"
+                )
+            )
         }
     }
 }

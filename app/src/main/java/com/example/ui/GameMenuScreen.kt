@@ -98,7 +98,10 @@ fun GameMenuScreen(
         ) {
             // New Run Card Button (Immersive Primary Lavender)
             Button(
-                onClick = onStartNewGame,
+                onClick = {
+                    SoundManager.playMenuClick()
+                    onStartNewGame()
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = ImmersiveLavender),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier
@@ -121,7 +124,10 @@ fun GameMenuScreen(
 
             // Load Run Card Button (Immersive Header Bordered style)
             Button(
-                onClick = onLoadGame,
+                onClick = {
+                    SoundManager.playMenuClick()
+                    onLoadGame()
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.8f)),
                 border = BorderStroke(1.5.dp, ImmersiveLavender),
                 shape = RoundedCornerShape(10.dp),
@@ -145,7 +151,10 @@ fun GameMenuScreen(
 
             // Directives & Instructions button (Immersive Amber highlight style)
             Button(
-                onClick = onViewControls,
+                onClick = {
+                    SoundManager.playMenuClick()
+                    onViewControls()
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.5f)),
                 border = BorderStroke(1.dp, ImmersiveAmber.copy(alpha = 0.8f)),
                 shape = RoundedCornerShape(10.dp),
@@ -169,7 +178,10 @@ fun GameMenuScreen(
 
             // Native Compose Canvas Isometric Inspector button (Immersive Green highlight style)
             Button(
-                onClick = onOpenNativeIsoCanvas,
+                onClick = {
+                    SoundManager.playMenuClick()
+                    onOpenNativeIsoCanvas()
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.5f)),
                 border = BorderStroke(1.dp, ImmersiveGreen.copy(alpha = 0.8f)),
                 shape = RoundedCornerShape(10.dp),
@@ -192,11 +204,12 @@ fun GameMenuScreen(
             }
 
             // Audio Status Toggle
-            var isAudioMuted by remember { mutableStateOf(AudioManager.isMuted) }
+            var isAudioMuted by remember { mutableStateOf(SoundManager.isMuted) }
             Button(
                 onClick = {
-                    AudioManager.isMuted = !AudioManager.isMuted
-                    isAudioMuted = AudioManager.isMuted
+                    SoundManager.isMuted = !SoundManager.isMuted
+                    isAudioMuted = SoundManager.isMuted
+                    if (!isAudioMuted) SoundManager.playMenuClick()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.5f)),
                 border = BorderStroke(1.dp, if (isAudioMuted) ImmersiveRed.copy(alpha = 0.8f) else ImmersiveLavender.copy(alpha = 0.8f)),

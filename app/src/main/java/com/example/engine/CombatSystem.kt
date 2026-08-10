@@ -2,6 +2,7 @@ package com.example.engine
 
 import com.example.model.*
 import com.example.ui.AudioManager
+import com.example.ui.SoundManager
 import kotlin.math.*
 
 class CombatSystem(private val levelManager: LevelManager) {
@@ -210,6 +211,8 @@ class CombatSystem(private val levelManager: LevelManager) {
             log("SKILL LOCKED IN COGNITIVE MATRIX")
             return
         }
+
+        SoundManager.playSkillActivation(skillId)
 
         when (skillId) {
             "ronin_crit" -> {

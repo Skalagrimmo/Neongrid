@@ -34,7 +34,10 @@ object IsoTileRenderer {
         drawPath.lineTo(isoPos.x - halfW, isoPos.y)
         drawPath.close()
 
-        val baseColor = when (tileType) {
+        val celSettings = gbcSettings.celShadingSettings
+        val isCel = gbcSettings.isCelShadingEnabled && celSettings.isEnabled
+
+        val rawBaseColor = when (tileType) {
             TileType.FLOOR -> if (zLevel == 0) palette.floorPrimary else palette.floorSecondary
             TileType.GRID_ROAD -> palette.wallPrimary
             TileType.LADDER_UP, TileType.LADDER_DOWN -> palette.floorSecondary
@@ -45,12 +48,18 @@ object IsoTileRenderer {
             else -> Color.Transparent
         }
 
+        val baseColor = if (isCel && rawBaseColor != Color.Transparent) {
+            CelShadingEngine.applyCelShading(rawBaseColor, lightFactor = 1.0f, settings = celSettings)
+        } else {
+            rawBaseColor
+        }
+
         if (baseColor != Color.Transparent) {
             drawScope.drawPath(drawPath, color = baseColor, style = Fill)
 
             // 8-Bit Pixel Dither Shading Pattern on Tile Surface
             if (gbcSettings.isPixelDitherEnabled && tileType == TileType.FLOOR) {
-                val ditherColor = palette.gridOutline.copy(alpha = 0.25f)
+                val ditherColor = if (isCel) celSettings.inkOutlineColor.copy(alpha = 0.35f) else palette.gridOutline.copy(alpha = 0.25f)
                 val dotSize = 2f
                 // Render 4-point isometric dither matrix
                 drawScope.drawCircle(color = ditherColor, radius = dotSize, center = Offset(isoPos.x, isoPos.y - halfH * 0.4f))
@@ -59,8 +68,15 @@ object IsoTileRenderer {
                 drawScope.drawCircle(color = ditherColor, radius = dotSize, center = Offset(isoPos.x - halfW * 0.35f, isoPos.y))
             }
 
-            // Crisp 8-Bit Pixel Grid Stroke
-            val strokeColor = if (gbcSettings.isPixelOutlineEnabled) {
+            // Crisp 8-Bit Pixel / Cel-Shaded Grid Stroke
+            val strokeColor = if (isCel) {
+                when (tileType) {
+                    TileType.GRID_ROAD -> palette.wallAccent
+                    TileType.TERMINAL -> palette.terminalColor
+                    TileType.EXIT_PORTAL -> palette.enemyPatrol
+                    else -> celSettings.inkOutlineColor.copy(alpha = 0.75f)
+                }
+            } else if (gbcSettings.isPixelOutlineEnabled) {
                 when (tileType) {
                     TileType.GRID_ROAD -> palette.wallAccent.copy(alpha = 0.8f)
                     TileType.TERMINAL -> palette.terminalColor.copy(alpha = 0.9f)
@@ -71,7 +87,7 @@ object IsoTileRenderer {
                 Color(0x1AFFFFFF)
             }
 
-            val strokeWidth = if (gbcSettings.isPixelOutlineEnabled) 1.5f else 1f
+            val strokeWidth = if (isCel) celSettings.inkOutlineThickness else if (gbcSettings.isPixelOutlineEnabled) 1.5f else 1f
             drawScope.drawPath(drawPath, color = strokeColor, style = Stroke(width = strokeWidth))
         }
 

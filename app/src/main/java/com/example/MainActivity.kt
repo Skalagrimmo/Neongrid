@@ -15,7 +15,7 @@ import com.example.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
   override fun getAttributionTag(): String? {
-    return "audio"
+    return "default"
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {

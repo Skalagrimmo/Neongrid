@@ -1,6 +1,7 @@
 package com.example.model
 
 import androidx.compose.ui.graphics.Color
+import com.example.render.CelShadingSettings
 
 enum class GbcPalette(
     val displayName: String,
@@ -89,5 +90,7 @@ data class GbcGraphicsSettings(
     val isPixelOutlineEnabled: Boolean = true,
     val isPixelDitherEnabled: Boolean = true,
     val isScanlinesEnabled: Boolean = true,
-    val isPixelSnappingEnabled: Boolean = false
+    val isPixelSnappingEnabled: Boolean = false,
+    val isCelShadingEnabled: Boolean = true,
+    val celShadingSettings: CelShadingSettings = CelShadingSettings()
 )

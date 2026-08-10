@@ -54,6 +54,9 @@ object IsoElevationGridRenderer {
         val pBottom = Offset(isoCenter.x, isoCenter.y + halfH)
         val pLeft = Offset(isoCenter.x - halfW, isoCenter.y)
 
+        val celSettings = gbcSettings.celShadingSettings
+        val isCel = gbcSettings.isCelShadingEnabled && celSettings.isEnabled
+
         // 1. Draw 3D Side Walls / Cliff Faces if elevated (elevationHeight > 0)
         if (node.elevationHeight > 0.05f && !isLowSpec) {
             val wallDropY = heightOffsetPx.coerceAtMost(zScalePx * 2.0f)
@@ -66,14 +69,16 @@ object IsoElevationGridRenderer {
             drawPath.lineTo(pLeft.x, pLeft.y + wallDropY)
             drawPath.close()
 
-            val leftWallColor = when (node.elevationType) {
+            val rawLeftWallColor = when (node.elevationType) {
                 ElevationType.ELEVATED_PLATFORM -> palette.wallPrimary
                 ElevationType.LEDGE -> palette.wallPrimary.copy(alpha = 0.9f)
                 else -> palette.bgDark
             }
+            val leftWallColor = if (isCel) CelShadingEngine.applyCelShading(rawLeftWallColor, 0.55f, celSettings) else rawLeftWallColor
             drawScope.drawPath(drawPath, color = leftWallColor, style = Fill)
-            val strokeCol = if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else palette.wallAccent.copy(alpha = 0.3f)
-            drawScope.drawPath(drawPath, color = strokeCol, style = Stroke(width = 1.5f))
+            val strokeCol = if (isCel) celSettings.inkOutlineColor else if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else palette.wallAccent.copy(alpha = 0.3f)
+            val strokeWidth = if (isCel) celSettings.inkOutlineThickness else 1.5f
+            drawScope.drawPath(drawPath, color = strokeCol, style = Stroke(width = strokeWidth))
 
             // Right Wall Face
             drawPath.reset()
@@ -83,13 +88,14 @@ object IsoElevationGridRenderer {
             drawPath.lineTo(pBottom.x, pBottom.y + wallDropY)
             drawPath.close()
 
-            val rightWallColor = when (node.elevationType) {
+            val rawRightWallColor = when (node.elevationType) {
                 ElevationType.ELEVATED_PLATFORM -> palette.wallPrimary.copy(alpha = 0.85f)
                 ElevationType.LEDGE -> palette.wallPrimary.copy(alpha = 0.75f)
                 else -> palette.bgDark
             }
+            val rightWallColor = if (isCel) CelShadingEngine.applyCelShading(rawRightWallColor, 0.80f, celSettings) else rawRightWallColor
             drawScope.drawPath(drawPath, color = rightWallColor, style = Fill)
-            drawScope.drawPath(drawPath, color = strokeCol, style = Stroke(width = 1.5f))
+            drawScope.drawPath(drawPath, color = strokeCol, style = Stroke(width = strokeWidth))
         }
 
         // 2. Draw Main Top Surface Diamond
@@ -100,7 +106,7 @@ object IsoElevationGridRenderer {
         drawPath.lineTo(pLeft.x, pLeft.y)
         drawPath.close()
 
-        val baseColor = when (node.elevationType) {
+        val rawBaseColor = when (node.elevationType) {
             ElevationType.ELEVATED_PLATFORM -> palette.wallTop
             ElevationType.LEDGE -> palette.wallPrimary
             ElevationType.STAIRS_UP -> palette.floorSecondary
@@ -115,17 +121,20 @@ object IsoElevationGridRenderer {
             }
         }
 
+        val baseColor = if (isCel) CelShadingEngine.applyCelShading(rawBaseColor, 1.05f, celSettings) else rawBaseColor
+
         drawScope.drawPath(drawPath, color = baseColor, style = Fill)
 
         // Pixel Dither
         if (gbcSettings.isPixelDitherEnabled && node.elevationHeight > 0f) {
-            val ditherCol = palette.wallAccent.copy(alpha = 0.35f)
+            val ditherCol = if (isCel) celSettings.inkOutlineColor.copy(alpha = 0.4f) else palette.wallAccent.copy(alpha = 0.35f)
             drawScope.drawCircle(color = ditherCol, radius = 2f, center = isoCenter)
         }
 
         // Grid Outline Stroke
-        val strokeColor = if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else palette.wallAccent.copy(alpha = 0.3f)
-        drawScope.drawPath(drawPath, color = strokeColor, style = Stroke(width = 1.5f))
+        val strokeColor = if (isCel) celSettings.inkOutlineColor else if (gbcSettings.isPixelOutlineEnabled) palette.gridOutline else palette.wallAccent.copy(alpha = 0.3f)
+        val strokeWidth = if (isCel) celSettings.inkOutlineThickness else 1.5f
+        drawScope.drawPath(drawPath, color = strokeColor, style = Stroke(width = strokeWidth))
 
         // 3. Draw Ramps & Stairs Visual Indicators
         when (node.elevationType) {

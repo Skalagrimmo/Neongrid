@@ -21,9 +21,12 @@ data class GridPos(val x: Int, val y: Int, val z: Int)
 
 // Game Equipment Categories
 enum class EquipmentType {
-    WEAPON,   // Nano-Blade, Plasma Carbine, Monofilament Whip
-    CORE,     // Ghost Cloak, Force Shield, Overclocker
-    SYSTEM    // Dash Boosters, Quiet Soles, Targeting Chip
+    WEAPON,    // Nano-Blade, Plasma Carbine, Monofilament Whip
+    ARMOR,     // Subdermal Weave, Heavy Nanotech Cuirass, Exo-Plating
+    CORE,      // Ghost Cloak, Force Shield, Overclocker
+    SYSTEM,    // Dash Boosters, Quiet Soles, Targeting Chip
+    HEAD,      // Tac-HUD Visor, Neural Mask
+    ACCESSORY  // Kinetic Capacitor, EMP Ring
 }
 
 // Represent an equippable weapon/gear
@@ -35,6 +38,7 @@ data class EquipmentItem(
     val statBoostHealth: Float = 0f,
     val statBoostEnergy: Float = 0f,
     val statBoostDamage: Float = 0f,
+    val statBoostArmor: Float = 0f,
     val statBoostSpeed: Float = 0f,
     val statBoostStealth: Float = 0f, // Reduces enemy vision fill rate
     val energyCost: Float = 0f,
@@ -59,6 +63,7 @@ data class EquipmentItem(
             type = EquipmentType.CORE,
             description = "Deploys a kinetic barrier protecting the host.",
             statBoostHealth = 50f,
+            statBoostArmor = 15f,
             statBoostEnergy = 10f,
             costCredits = 0,
             color = 0xFF00FF66 // Green
@@ -69,14 +74,37 @@ data class EquipmentItem(
             type = EquipmentType.SYSTEM,
             description = "Direct brain interface that enhances motor reflexes.",
             statBoostSpeed = 0.2f,
+            statBoostDamage = 10f,
             costCredits = 0,
             color = 0xFFFF9900 // Orange
+        )
+        val DEFAULT_ARMOR = EquipmentItem(
+            id = "nanotech_cuirass",
+            name = "Nanotech Kevlar Cuirass",
+            type = EquipmentType.ARMOR,
+            description = "Composite weave armor plating that mitigates kinetic and thermal damage.",
+            statBoostHealth = 40f,
+            statBoostArmor = 25f,
+            costCredits = 0,
+            color = 0xFF3399FF // Royal Blue
+        )
+        val DEFAULT_HEAD = EquipmentItem(
+            id = "tac_hud_visor",
+            name = "Tactical Optical Visor",
+            type = EquipmentType.HEAD,
+            description = "Augmented reality optic visor with thermal imaging and threat assessment.",
+            statBoostStealth = 15f,
+            statBoostDamage = 10f,
+            costCredits = 0,
+            color = 0xFFCC00FF // Magenta
         )
 
         val ALL_ITEMS = listOf(
             DEFAULT_WEAPON,
             DEFAULT_CORE,
             DEFAULT_SYSTEM,
+            DEFAULT_ARMOR,
+            DEFAULT_HEAD,
             // Weapons
             EquipmentItem(
                 id = "plasma_carbine",
@@ -98,6 +126,30 @@ data class EquipmentItem(
                 statBoostEnergy = 20f,
                 costCredits = 450,
                 color = 0xFFBD00FF // Purple
+            ),
+            // Armor
+            EquipmentItem(
+                id = "titanium_exo_frame",
+                name = "Titanium Exo-Frame",
+                type = EquipmentType.ARMOR,
+                description = "Heavy reinforced exoskeleton armor offering maximum kinetic damage deflection.",
+                statBoostHealth = 80f,
+                statBoostArmor = 50f,
+                statBoostSpeed = -0.2f,
+                costCredits = 500,
+                color = 0xFF6699FF
+            ),
+            EquipmentItem(
+                id = "subdermal_weave",
+                name = "Subdermal Stealth Weave",
+                type = EquipmentType.ARMOR,
+                description = "Lightweight flexible armor designed for high mobility and sound suppression.",
+                statBoostHealth = 30f,
+                statBoostArmor = 20f,
+                statBoostStealth = 25f,
+                statBoostSpeed = 0.3f,
+                costCredits = 420,
+                color = 0xFF00FFCC
             ),
             // Cores
             EquipmentItem(
@@ -141,6 +193,28 @@ data class EquipmentItem(
                 statBoostEnergy = 15f,
                 costCredits = 350,
                 color = 0xFFFF0055 // Rose
+            ),
+            // Headgear
+            EquipmentItem(
+                id = "neural_mask",
+                name = "Cybernetic Neural Mask",
+                type = EquipmentType.HEAD,
+                description = "Filters environmental toxins and enhances targeting accuracy.",
+                statBoostDamage = 20f,
+                statBoostEnergy = 20f,
+                costCredits = 380,
+                color = 0xFFFF6600
+            ),
+            // Accessories
+            EquipmentItem(
+                id = "kinetic_capacitor",
+                name = "Kinetic Energy Capacitor",
+                type = EquipmentType.ACCESSORY,
+                description = "Stores kinetic feedback from movement to recharge ability energy.",
+                statBoostEnergy = 35f,
+                statBoostSpeed = 0.2f,
+                costCredits = 320,
+                color = 0xFFFFFF00
             )
         )
     }
@@ -395,7 +469,10 @@ data class Enemy(
     var isSearching: Boolean = false, // True if doing a visual sweep
     var searchTimer: Float = 0f, // Search timer at target/sound locations
     var hasLostTargetInAggro: Boolean = false, // True if target lost during active AGGRO
-    var aggroLostSearchTimer: Float = 0f // Active search timer at last known position
+    var aggroLostSearchTimer: Float = 0f, // Active search timer at last known position
+    var calculatedWaypoints: List<Point3D> = emptyList(), // Calculated grid patrol waypoints
+    var currentPath: List<Point3D> = emptyList(), // Calculated grid step-by-step path
+    var pathIndex: Int = 0 // Current node index in calculated path
 ) {
     fun getVisionConeAngle(): Float = when (alertState) {
         AlertState.PATROLLING -> 1.05f // ~60 degrees
