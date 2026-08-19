@@ -2,15 +2,16 @@ package com.example.ui
 
 import android.app.Application
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.CustomLoadoutEntity
+import com.example.data.CustomLoadoutDefaults
 import com.example.data.GameDatabase
 import com.example.data.GameRepository
-import com.example.data.PlayerSaveState
-import com.example.data.GameStateSerializationService
+import com.example.data.PlayerSaveStateMapper
 import com.example.engine.CombatSystem
 import com.example.engine.LevelManager
 import com.example.engine.MovementSystem
@@ -20,7 +21,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlin.math.*
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -62,8 +62,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         NATIVE_ISO_CANVAS
     }
 
-    var currentScreen by mutableStateOf(Screen.MENU)
-        private set
+    private val screenStateController = ScreenStateController(Screen.MENU)
+
+    val currentScreen: Screen
+        get() = screenStateController.currentScreen
 
     // Low-Spec Performance Optimization Mode (2012-2013 4-Core Mobile Preset)
     var isLowSpecPerformanceMode by mutableStateOf(true)
@@ -130,11 +132,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private var lastExploredGridY = -1
     private var lastExploredZ = -1
 
-    var enemies = mutableListOf<Enemy>()
-        private set
+    val enemies = mutableStateListOf<Enemy>()
 
-    var noiseRipples = mutableListOf<NoiseRipple>()
-        private set
+    val noiseRipples = mutableStateListOf<NoiseRipple>()
 
     val gameLevels: Map<Int, GameLevelMap>
         get() = levelManager.gameLevels
@@ -178,19 +178,17 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     var hackProgress by mutableStateOf(0f)
         private set
 
-    var consoleLogs = mutableListOf<String>()
-        private set
+    val consoleLogs = mutableStateListOf<String>()
 
     var skillNodes by mutableStateOf(SkillNode.getSkillTree())
         private set
 
-    var activeProjectiles = mutableListOf<Pair<Point3D, Point3D>>()
-        private set
+    val activeProjectiles = mutableStateListOf<Pair<Point3D, Point3D>>()
 
     var gameTick by mutableStateOf(0L)
         private set
 
-    private var gameLoopJob: Job? = null
+    private val gameLoopController = GameLoopController()
 
     var lastMoveX: Float = 1.0f
         private set
@@ -233,8 +231,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun changeScreen(screen: Screen) {
-        currentScreen = screen
-        if (screen == Screen.PLAY && gameLoopJob == null) {
+        screenStateController.changeTo(screen)
+        if (screen == Screen.PLAY && !gameLoopController.isRunning) {
             startGameLoop()
         } else if (screen != Screen.PLAY) {
             stopGameLoop()
@@ -245,56 +243,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.saveState.collect { save ->
                 save?.let {
-                    val unlockedSet = it.unlockedSkillIdsString.split(",").filter { id -> id.isNotEmpty() }.toSet()
-                    val equippedWeapon = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedWeaponId } ?: EquipmentItem.DEFAULT_WEAPON
-                    val equippedCore = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedCoreId } ?: EquipmentItem.DEFAULT_CORE
-                    val equippedSystem = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedSystemId } ?: EquipmentItem.DEFAULT_SYSTEM
-
-                    val totalHealthBoost = equippedWeapon.statBoostHealth + equippedCore.statBoostHealth + equippedSystem.statBoostHealth
-                    val totalEnergyBoost = equippedWeapon.statBoostEnergy + equippedCore.statBoostEnergy + equippedSystem.statBoostEnergy
-                    val loadedMaxHealth = 100f + totalHealthBoost
-                    val loadedMaxEnergy = 80f + totalEnergyBoost
-
-                    val restoredQuest = Quest(
-                        id = it.questId,
-                        title = it.questTitle,
-                        description = it.questDescription,
-                        currentProgress = it.questProgress,
-                        targetCount = it.questTargetCount,
-                        isCompleted = it.questCompleted
-                    )
-
-                    val ownedEquipSet = it.inventoryEquipmentIdsString.split(",").filter { id -> id.isNotEmpty() }.toSet()
-                    val restoredInventory = Inventory(
-                        ownedEquipmentIds = if (ownedEquipSet.isEmpty()) setOf("nano_blade", "force_shield", "targeting_chip") else ownedEquipSet,
-                        healthPacks = it.inventoryHealthPacks,
-                        energyCells = it.inventoryEnergyCells
-                    )
-
-                    currentZLevel = it.currentZLevel
-                    player = player.copy(
-                        pos = Point3D(it.playerPosX, it.playerPosY, it.currentZLevel.toFloat()),
-                        level = it.level,
-                        xp = it.xp,
-                        skillPoints = it.skillPoints,
-                        credits = it.credits,
-                        equippedWeapon = equippedWeapon,
-                        equippedCore = equippedCore,
-                        equippedSystem = equippedSystem,
-                        unlockedSkills = unlockedSet,
-                        maxHealth = loadedMaxHealth,
-                        maxEnergy = loadedMaxEnergy,
-                        health = it.playerHealth.coerceAtMost(loadedMaxHealth),
-                        energy = it.playerEnergy.coerceAtMost(loadedMaxEnergy),
-                        quest = restoredQuest,
-                        inventory = restoredInventory
-                    )
-
-                    skillNodes = skillNodes.map { node ->
-                        node.copy(isUnlocked = unlockedSet.contains(node.id))
-                    }
-
-                    exploredTiles = GameStateSerializationService.deserializeExploration(it.exploredTilesString).toMutableMap()
+                    val restored = PlayerSaveStateMapper.restore(it, player)
+                    currentZLevel = restored.currentZLevel
+                    player = restored.player
+                    skillNodes = restored.skillNodes
+                    exploredTiles = restored.exploredTiles
                     updateExplorationAtPlayer(force = true)
 
                     logToConsole("SAVE RESTORED: CLVL ${it.level} | POS (${it.playerPosX.toInt()},${it.playerPosY.toInt()},Z=${it.currentZLevel})")
@@ -305,32 +258,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveGameProgress() {
         viewModelScope.launch {
-            val save = PlayerSaveState(
-                level = player.level,
-                xp = player.xp,
-                skillPoints = player.skillPoints,
-                credits = player.credits,
-                equippedWeaponId = player.equippedWeapon.id,
-                equippedCoreId = player.equippedCore.id,
-                equippedSystemId = player.equippedSystem.id,
-                unlockedSkillIdsString = player.unlockedSkills.joinToString(","),
-                highScore = max(currentScore, player.credits),
-                highestZLevelCleared = max(currentZLevel, 1),
+            val save = PlayerSaveStateMapper.toSaveState(
+                player = player,
                 currentZLevel = currentZLevel,
-                playerPosX = player.pos.x,
-                playerPosY = player.pos.y,
-                playerHealth = player.health,
-                playerEnergy = player.energy,
-                exploredTilesString = GameStateSerializationService.serializeExploration(exploredTiles),
-                questId = player.quest.id,
-                questTitle = player.quest.title,
-                questDescription = player.quest.description,
-                questProgress = player.quest.currentProgress,
-                questTargetCount = player.quest.targetCount,
-                questCompleted = player.quest.isCompleted,
-                inventoryEquipmentIdsString = player.inventory.ownedEquipmentIds.joinToString(","),
-                inventoryHealthPacks = player.inventory.healthPacks,
-                inventoryEnergyCells = player.inventory.energyCells
+                currentScore = currentScore,
+                exploredTiles = exploredTiles
             )
             repository.saveGame(save)
             logToConsole("ROOM DB PERSISTED: POS & QUEST & INVENTORY")
@@ -442,32 +374,28 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startGameLoop() {
-        gameLoopJob?.cancel()
-        gameLoopJob = viewModelScope.launch(Dispatchers.Main.immediate) {
-            var lastTime = System.currentTimeMillis()
-            while (isActive) {
-                val currentTime = System.currentTimeMillis()
-                val deltaTime = (currentTime - lastTime) / 1000f
-                lastTime = currentTime
-
+        gameLoopController.start(
+            scope = viewModelScope,
+            dispatcher = Dispatchers.Main.immediate,
+            targetDelayMillis = { if (isLowSpecPerformanceMode) 33L else 16L },
+            onTick = { deltaTime ->
                 updateGameEntities(deltaTime)
                 gameTick++
-                val targetDelay = if (isLowSpecPerformanceMode) 33L else 16L
-                delay(targetDelay)
             }
-        }
+        )
     }
 
     private fun stopGameLoop() {
-        gameLoopJob?.cancel()
-        gameLoopJob = null
+        gameLoopController.stop()
     }
 
     private fun updateGameEntities(dt: Float) {
         if (isGameOver || isGameWon) return
 
         // 1. Process Active Projectiles
-        activeProjectiles = combatSystem.processProjectiles(activeProjectiles, enemies, player, currentZLevel, dt).toMutableList()
+        val processedProjectiles = combatSystem.processProjectiles(activeProjectiles, enemies, player, currentZLevel, dt)
+        activeProjectiles.clear()
+        activeProjectiles.addAll(processedProjectiles)
 
         // 2. Process Noise Ripples
         val nextRipples = mutableListOf<NoiseRipple>()
@@ -477,7 +405,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 nextRipples.add(ripple)
             }
         }
-        noiseRipples = nextRipples
+        noiseRipples.clear()
+        noiseRipples.addAll(nextRipples)
 
         // 3. Process Invisibility
         if (player.isInvisible) {
@@ -953,42 +882,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun seedDefaultLoadouts() {
         viewModelScope.launch {
-            repository.saveCustomLoadout(
-                CustomLoadoutEntity(
-                    name = "RONIN MELEE STRIKER",
-                    weaponId = "nano_blade",
-                    weaponName = "Nano-Edge Katana",
-                    coreId = "force_shield",
-                    coreName = "Hard-Light Kinetic Barrier",
-                    systemId = "targeting_chip",
-                    systemName = "Ocular Combat Predictor",
-                    characterClass = "CYBER_RONIN"
-                )
-            )
-            repository.saveCustomLoadout(
-                CustomLoadoutEntity(
-                    name = "TECH NECRO OVERLOAD",
-                    weaponId = "plasma_rifle",
-                    weaponName = "Hyperion Plasma Launcher",
-                    coreId = "overclock_core",
-                    coreName = "Thermal Overclock Core",
-                    systemId = "drone_controller",
-                    systemName = "Autonomous Sentry Link",
-                    characterClass = "TECH_NECROMANCER"
-                )
-            )
-            repository.saveCustomLoadout(
-                CustomLoadoutEntity(
-                    name = "GHOST INFILTRATOR",
-                    weaponId = "vibro_dagger",
-                    weaponName = "High-Frequency Vibro-Dagger",
-                    coreId = "stealth_cloak",
-                    coreName = "Phase-Shift Stealth Field",
-                    systemId = "stealth_dampener",
-                    systemName = "Acoustic Noise Suppressor",
-                    characterClass = "GHOST_INFILTRATOR"
-                )
-            )
+            CustomLoadoutDefaults.presets.forEach { loadout ->
+                repository.saveCustomLoadout(loadout)
+            }
         }
     }
 }
