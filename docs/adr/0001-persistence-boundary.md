@@ -30,11 +30,11 @@ Runtime gameplay classes such as `Player`, `Enemy`, `Quest`, `Inventory`, `Equip
 - New persistence work has a clear home: `AppDatabase` plus `DataRepository` or a successor repository built around the same boundary.
 - `GameViewModel` can be simplified once save/load mapping is moved out.
 - Existing destructive migrations should be replaced with explicit Room migrations before release builds rely on real player data.
-- Tests verify save-state serialization and mapper round trips from runtime state to persisted state and back.
+- Tests should verify round trips from runtime state to persisted state and back.
 
 ## Follow-up tasks
 
-1. Continue expanding `PlayerSaveStateMapper` coverage as new run-state fields are added.
-2. Migrate remaining save/load callers to the canonical `AppDatabase` boundary.
+1. Add `PlayerSaveStateMapper` with focused unit tests.
+2. Migrate `GameViewModel` save/load code to the mapper.
 3. Add migration tests before changing database versions again.
 4. Remove or deprecate redundant database/repository paths after callers are migrated.

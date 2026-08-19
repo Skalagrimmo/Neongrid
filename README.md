@@ -30,9 +30,9 @@ Near-term architecture priorities:
 
 1. Keep gameplay formulas and state transitions testable outside Android UI classes.
 2. Reduce `GameViewModel` toward orchestration only by extracting session, progression, save/load mapping, and navigation responsibilities.
-3. Use one documented persistence boundary and keep save/load conversion in mapper classes instead of view models.
+3. Use one documented persistence boundary and avoid multiple competing repositories for the same gameplay data.
 4. Move balancing data for equipment, skills, enemies, and objectives toward validated data files.
-5. Prefer Compose-observable state containers when lists of enemies, noise ripples, projectiles, or explored tiles change.
+5. Prefer state containers that Compose can observe reliably when lists of enemies, noise ripples, projectiles, or explored tiles change.
 
 See [`docs/adr/0001-persistence-boundary.md`](docs/adr/0001-persistence-boundary.md) for the initial persistence decision and [`PROJECT_ROADMAP_UK.md`](PROJECT_ROADMAP_UK.md) for a broader Ukrainian roadmap.
 

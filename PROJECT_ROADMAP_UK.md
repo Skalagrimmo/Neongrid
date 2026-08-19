@@ -66,7 +66,7 @@ NeonGrid зараз виглядає як Android RPG-прототип на Kotl
 2. Зафіксувати architecture decision record для persistence: одна база чи дві, які сутності де живуть.
 3. Розділити `GameViewModel` на session/progression/save/navigation частини без зміни gameplay.
 4. Додати чисті JVM-тести для `CombatSystem`, `MovementSystem`, `GameStateSerializationService` і skill prerequisites.
-5. Продовжити перевірку mutable state у Compose: enemies/noise/projectiles/logs уже варто тримати в observable collections, наступними лишаються складніші map/level mutations.
+5. Перевірити, чи всі mutable lists у Compose-стані оновлюються так, щоб UI гарантовано recomposable-ився після змін.
 
 ### Етап 2 — якість gameplay-loop
 
