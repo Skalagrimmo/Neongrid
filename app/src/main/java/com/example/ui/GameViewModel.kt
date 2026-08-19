@@ -62,8 +62,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         NATIVE_ISO_CANVAS
     }
 
-    var currentScreen by mutableStateOf(Screen.MENU)
-        private set
+    private val screenStateController = ScreenStateController(Screen.MENU)
+
+    val currentScreen: Screen
+        get() = screenStateController.currentScreen
 
     // Low-Spec Performance Optimization Mode (2012-2013 4-Core Mobile Preset)
     var isLowSpecPerformanceMode by mutableStateOf(true)
