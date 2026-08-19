@@ -2,6 +2,7 @@ package com.example.ui
 
 import android.app.Application
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -128,11 +129,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private var lastExploredGridY = -1
     private var lastExploredZ = -1
 
-    var enemies = mutableListOf<Enemy>()
-        private set
+    val enemies = mutableStateListOf<Enemy>()
 
-    var noiseRipples = mutableListOf<NoiseRipple>()
-        private set
+    val noiseRipples = mutableStateListOf<NoiseRipple>()
 
     val gameLevels: Map<Int, GameLevelMap>
         get() = levelManager.gameLevels
@@ -176,14 +175,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     var hackProgress by mutableStateOf(0f)
         private set
 
-    var consoleLogs = mutableListOf<String>()
-        private set
+    val consoleLogs = mutableStateListOf<String>()
 
     var skillNodes by mutableStateOf(SkillNode.getSkillTree())
         private set
 
-    var activeProjectiles = mutableListOf<Pair<Point3D, Point3D>>()
-        private set
+    val activeProjectiles = mutableStateListOf<Pair<Point3D, Point3D>>()
 
     var gameTick by mutableStateOf(0L)
         private set
@@ -399,7 +396,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         if (isGameOver || isGameWon) return
 
         // 1. Process Active Projectiles
-        activeProjectiles = combatSystem.processProjectiles(activeProjectiles, enemies, player, currentZLevel, dt).toMutableList()
+        val processedProjectiles = combatSystem.processProjectiles(activeProjectiles, enemies, player, currentZLevel, dt)
+        activeProjectiles.clear()
+        activeProjectiles.addAll(processedProjectiles)
 
         // 2. Process Noise Ripples
         val nextRipples = mutableListOf<NoiseRipple>()
@@ -409,7 +408,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                 nextRipples.add(ripple)
             }
         }
-        noiseRipples = nextRipples
+        noiseRipples.clear()
+        noiseRipples.addAll(nextRipples)
 
         // 3. Process Invisibility
         if (player.isInvisible) {
