@@ -9,8 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.CustomLoadoutEntity
 import com.example.data.GameDatabase
 import com.example.data.GameRepository
-import com.example.data.PlayerSaveState
-import com.example.data.GameStateSerializationService
+import com.example.data.PlayerSaveStateMapper
 import com.example.engine.CombatSystem
 import com.example.engine.LevelManager
 import com.example.engine.MovementSystem
@@ -20,7 +19,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlin.math.*
 
 class GameViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -245,56 +243,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.saveState.collect { save ->
                 save?.let {
-                    val unlockedSet = it.unlockedSkillIdsString.split(",").filter { id -> id.isNotEmpty() }.toSet()
-                    val equippedWeapon = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedWeaponId } ?: EquipmentItem.DEFAULT_WEAPON
-                    val equippedCore = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedCoreId } ?: EquipmentItem.DEFAULT_CORE
-                    val equippedSystem = EquipmentItem.ALL_ITEMS.find { item -> item.id == it.equippedSystemId } ?: EquipmentItem.DEFAULT_SYSTEM
-
-                    val totalHealthBoost = equippedWeapon.statBoostHealth + equippedCore.statBoostHealth + equippedSystem.statBoostHealth
-                    val totalEnergyBoost = equippedWeapon.statBoostEnergy + equippedCore.statBoostEnergy + equippedSystem.statBoostEnergy
-                    val loadedMaxHealth = 100f + totalHealthBoost
-                    val loadedMaxEnergy = 80f + totalEnergyBoost
-
-                    val restoredQuest = Quest(
-                        id = it.questId,
-                        title = it.questTitle,
-                        description = it.questDescription,
-                        currentProgress = it.questProgress,
-                        targetCount = it.questTargetCount,
-                        isCompleted = it.questCompleted
-                    )
-
-                    val ownedEquipSet = it.inventoryEquipmentIdsString.split(",").filter { id -> id.isNotEmpty() }.toSet()
-                    val restoredInventory = Inventory(
-                        ownedEquipmentIds = if (ownedEquipSet.isEmpty()) setOf("nano_blade", "force_shield", "targeting_chip") else ownedEquipSet,
-                        healthPacks = it.inventoryHealthPacks,
-                        energyCells = it.inventoryEnergyCells
-                    )
-
-                    currentZLevel = it.currentZLevel
-                    player = player.copy(
-                        pos = Point3D(it.playerPosX, it.playerPosY, it.currentZLevel.toFloat()),
-                        level = it.level,
-                        xp = it.xp,
-                        skillPoints = it.skillPoints,
-                        credits = it.credits,
-                        equippedWeapon = equippedWeapon,
-                        equippedCore = equippedCore,
-                        equippedSystem = equippedSystem,
-                        unlockedSkills = unlockedSet,
-                        maxHealth = loadedMaxHealth,
-                        maxEnergy = loadedMaxEnergy,
-                        health = it.playerHealth.coerceAtMost(loadedMaxHealth),
-                        energy = it.playerEnergy.coerceAtMost(loadedMaxEnergy),
-                        quest = restoredQuest,
-                        inventory = restoredInventory
-                    )
-
-                    skillNodes = skillNodes.map { node ->
-                        node.copy(isUnlocked = unlockedSet.contains(node.id))
-                    }
-
-                    exploredTiles = GameStateSerializationService.deserializeExploration(it.exploredTilesString).toMutableMap()
+                    val restored = PlayerSaveStateMapper.restore(it, player)
+                    currentZLevel = restored.currentZLevel
+                    player = restored.player
+                    skillNodes = restored.skillNodes
+                    exploredTiles = restored.exploredTiles
                     updateExplorationAtPlayer(force = true)
 
                     logToConsole("SAVE RESTORED: CLVL ${it.level} | POS (${it.playerPosX.toInt()},${it.playerPosY.toInt()},Z=${it.currentZLevel})")
@@ -305,32 +258,11 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveGameProgress() {
         viewModelScope.launch {
-            val save = PlayerSaveState(
-                level = player.level,
-                xp = player.xp,
-                skillPoints = player.skillPoints,
-                credits = player.credits,
-                equippedWeaponId = player.equippedWeapon.id,
-                equippedCoreId = player.equippedCore.id,
-                equippedSystemId = player.equippedSystem.id,
-                unlockedSkillIdsString = player.unlockedSkills.joinToString(","),
-                highScore = max(currentScore, player.credits),
-                highestZLevelCleared = max(currentZLevel, 1),
+            val save = PlayerSaveStateMapper.toSaveState(
+                player = player,
                 currentZLevel = currentZLevel,
-                playerPosX = player.pos.x,
-                playerPosY = player.pos.y,
-                playerHealth = player.health,
-                playerEnergy = player.energy,
-                exploredTilesString = GameStateSerializationService.serializeExploration(exploredTiles),
-                questId = player.quest.id,
-                questTitle = player.quest.title,
-                questDescription = player.quest.description,
-                questProgress = player.quest.currentProgress,
-                questTargetCount = player.quest.targetCount,
-                questCompleted = player.quest.isCompleted,
-                inventoryEquipmentIdsString = player.inventory.ownedEquipmentIds.joinToString(","),
-                inventoryHealthPacks = player.inventory.healthPacks,
-                inventoryEnergyCells = player.inventory.energyCells
+                currentScore = currentScore,
+                exploredTiles = exploredTiles
             )
             repository.saveGame(save)
             logToConsole("ROOM DB PERSISTED: POS & QUEST & INVENTORY")
