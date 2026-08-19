@@ -186,7 +186,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     var gameTick by mutableStateOf(0L)
         private set
 
-    private var gameLoopJob: Job? = null
+    private val gameLoopController = GameLoopController()
 
     var lastMoveX: Float = 1.0f
         private set
@@ -230,7 +230,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     fun changeScreen(screen: Screen) {
         currentScreen = screen
-        if (screen == Screen.PLAY && gameLoopJob == null) {
+        if (screen == Screen.PLAY && !gameLoopController.isRunning) {
             startGameLoop()
         } else if (screen != Screen.PLAY) {
             stopGameLoop()
@@ -372,25 +372,19 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startGameLoop() {
-        gameLoopJob?.cancel()
-        gameLoopJob = viewModelScope.launch(Dispatchers.Main.immediate) {
-            var lastTime = System.currentTimeMillis()
-            while (isActive) {
-                val currentTime = System.currentTimeMillis()
-                val deltaTime = (currentTime - lastTime) / 1000f
-                lastTime = currentTime
-
+        gameLoopController.start(
+            scope = viewModelScope,
+            dispatcher = Dispatchers.Main.immediate,
+            targetDelayMillis = { if (isLowSpecPerformanceMode) 33L else 16L },
+            onTick = { deltaTime ->
                 updateGameEntities(deltaTime)
                 gameTick++
-                val targetDelay = if (isLowSpecPerformanceMode) 33L else 16L
-                delay(targetDelay)
             }
-        }
+        )
     }
 
     private fun stopGameLoop() {
-        gameLoopJob?.cancel()
-        gameLoopJob = null
+        gameLoopController.stop()
     }
 
     private fun updateGameEntities(dt: Float) {
