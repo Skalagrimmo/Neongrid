@@ -64,9 +64,10 @@ NeonGrid зараз виглядає як Android RPG-прототип на Kotl
 
 1. Додати `README.md` з описом гри, стеку, запуску, тестів і архітектури.
 2. Зафіксувати architecture decision record для persistence: одна база чи дві, які сутності де живуть.
-3. Продовжити розділення `GameViewModel`: save/load mapping, game-loop controller і screen-state controller уже винесені, наступний кандидат — progression.
+3. Розділити `GameViewModel` на session/progression/save/navigation частини без зміни gameplay.
 4. Додати чисті JVM-тести для `CombatSystem`, `MovementSystem`, `GameStateSerializationService` і skill prerequisites.
 5. Продовжити перевірку mutable state у Compose: enemies/noise/projectiles/logs уже варто тримати в observable collections, наступними лишаються складніші map/level mutations.
+5. Перевірити, чи всі mutable lists у Compose-стані оновлюються так, щоб UI гарантовано recomposable-ився після змін.
 
 ### Етап 2 — якість gameplay-loop
 
@@ -98,6 +99,7 @@ NeonGrid зараз виглядає як Android RPG-прототип на Kotl
 - **Pure domain tests.** Максимально відокремити бойові формули, detection formulas і progression від Android APIs.
 - **Save/load контракт.** Додати round-trip tests: runtime state -> save entity -> runtime state має повертати той самий прогрес.
 - **Content validation.** Кожен skill prerequisite, equipment id, default loadout і quest objective повинен перевірятися тестом.
+- **Content validation.** Кожен skill prerequisite, equipment id і quest objective повинен перевірятися тестом.
 - **Performance budgets.** Встановити цілі: наприклад 30 FPS на low-spec mode і 60 FPS на full shader mode, з окремими вимірами для render/update.
 
 ## Продуктові ідеї

@@ -231,7 +231,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun changeScreen(screen: Screen) {
-        screenStateController.changeTo(screen)
+        currentScreen = screen
         if (screen == Screen.PLAY && !gameLoopController.isRunning) {
             startGameLoop()
         } else if (screen != Screen.PLAY) {
