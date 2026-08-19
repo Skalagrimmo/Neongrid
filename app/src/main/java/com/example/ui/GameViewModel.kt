@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.CustomLoadoutEntity
+import com.example.data.CustomLoadoutDefaults
 import com.example.data.GameDatabase
 import com.example.data.GameRepository
 import com.example.data.PlayerSaveStateMapper
@@ -885,42 +886,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun seedDefaultLoadouts() {
         viewModelScope.launch {
-            repository.saveCustomLoadout(
-                CustomLoadoutEntity(
-                    name = "RONIN MELEE STRIKER",
-                    weaponId = "nano_blade",
-                    weaponName = "Nano-Edge Katana",
-                    coreId = "force_shield",
-                    coreName = "Hard-Light Kinetic Barrier",
-                    systemId = "targeting_chip",
-                    systemName = "Ocular Combat Predictor",
-                    characterClass = "CYBER_RONIN"
-                )
-            )
-            repository.saveCustomLoadout(
-                CustomLoadoutEntity(
-                    name = "TECH NECRO OVERLOAD",
-                    weaponId = "plasma_rifle",
-                    weaponName = "Hyperion Plasma Launcher",
-                    coreId = "overclock_core",
-                    coreName = "Thermal Overclock Core",
-                    systemId = "drone_controller",
-                    systemName = "Autonomous Sentry Link",
-                    characterClass = "TECH_NECROMANCER"
-                )
-            )
-            repository.saveCustomLoadout(
-                CustomLoadoutEntity(
-                    name = "GHOST INFILTRATOR",
-                    weaponId = "vibro_dagger",
-                    weaponName = "High-Frequency Vibro-Dagger",
-                    coreId = "stealth_cloak",
-                    coreName = "Phase-Shift Stealth Field",
-                    systemId = "stealth_dampener",
-                    systemName = "Acoustic Noise Suppressor",
-                    characterClass = "GHOST_INFILTRATOR"
-                )
-            )
+            CustomLoadoutDefaults.presets.forEach { loadout ->
+                repository.saveCustomLoadout(loadout)
+            }
         }
     }
 }
