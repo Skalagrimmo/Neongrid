@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -7,6 +8,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -45,7 +48,8 @@ fun GameHud(
     val currentZ = player.pos.z.toInt()
 
     // UI state toggles
-    var isConsoleExpanded by remember { mutableStateOf(false) }
+    var isTelemetrySheetOpen by remember { mutableStateOf(false) }
+    var selectedLogCategoryFilter by remember { mutableStateOf<LogCategory?>(null) }
     var isQuestExpanded by remember { mutableStateOf(true) }
     var isFullHudExpanded by remember { mutableStateOf(false) }
 
@@ -723,95 +727,390 @@ fun GameHud(
         }
 
         // =========================================================================
-        // 3. DEV CONSOLE (TOP-LEFT SUB-HEADER)
+        // 3. SPACE-SAVING ANIMATED RADAR & TRANSIENT EVENT TICKER (TOP-LEFT)
         // =========================================================================
+        val activeEnemiesOnZ = remember(viewModel.enemies, currentZ) {
+            viewModel.enemies.filter { !it.isDead && it.pos.z.toInt() == currentZ }
+        }
+        val alertedEnemyCount = remember(activeEnemiesOnZ) {
+            activeEnemiesOnZ.count { it.alertState == AlertState.ALERTED }
+        }
+        val suspiciousEnemyCount = remember(activeEnemiesOnZ) {
+            activeEnemiesOnZ.count { it.alertState == AlertState.SUSPICIOUS }
+        }
+
+        val threatDotColor = when {
+            alertedEnemyCount > 0 -> ImmersiveRed
+            suspiciousEnemyCount > 0 -> ImmersiveAmber
+            else -> ImmersiveGreen
+        }
+
+        val latestToast = viewModel.latestToastEvent
+        LaunchedEffect(latestToast?.id) {
+            if (latestToast != null) {
+                delay(2500L)
+                viewModel.dismissToastEvent()
+            }
+        }
+
+        // Animated Radar Sweep
+        val radarAnimation = rememberInfiniteTransition(label = "radar_sweep")
+        val radarPulseScale by radarAnimation.animateFloat(
+            initialValue = 0.85f,
+            targetValue = 1.25f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1100, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "radar_scale"
+        )
+        val radarPulseAlpha by radarAnimation.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 0.95f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1100, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "radar_alpha"
+        )
+
         Column(
             modifier = Modifier
-                .width(if (isConsoleExpanded) 210.dp else 120.dp)
-                .wrapContentHeight()
                 .padding(top = 62.dp, start = 8.dp)
-                .background(ImmersiveBgDark.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
-                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(6.dp))
-                .padding(6.dp)
-                .align(Alignment.TopStart)
+                .align(Alignment.TopStart),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // A. Compact Space-Saving Radar Badge Button
+            Card(
+                colors = CardDefaults.cardColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.92f)),
+                border = BorderStroke(1.dp, threatDotColor.copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .clickable { isTelemetrySheetOpen = true }
+                    .testTag("hud_radar_telemetry_button")
             ) {
-                Text(
-                    text = "DEV-CONSOLE",
-                    color = ImmersiveLavender,
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = if (isConsoleExpanded) "[-]" else "[+]",
-                    color = ImmersiveLavender,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.clickable { isConsoleExpanded = !isConsoleExpanded }
-                )
-            }
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier.size(18.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = radarPulseScale
+                                    scaleY = radarPulseScale
+                                    alpha = radarPulseAlpha
+                                }
+                                .background(threatDotColor.copy(alpha = 0.25f), CircleShape)
+                        )
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = "Radar Telemetry",
+                            tint = threatDotColor,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
 
-            if (isConsoleExpanded) {
-                Spacer(modifier = Modifier.height(4.dp))
-                val pX = player.pos.x.toInt()
-                val pY = player.pos.y.toInt()
-                val stateName = if (player.isSneaking) "STEALTH_RT" else "COMBAT_RT"
-
-                Text(
-                    text = "POS: ($pX, $pY, Z=$currentZ)",
-                    color = ImmersiveSlateLight,
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "STATE: $stateName",
-                    color = if (player.isSneaking) ImmersiveBlue else ImmersiveRed,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "ACTIVE AI TARGETS: Z=$currentZ",
-                    color = ImmersiveSlateLight,
-                    fontSize = 8.5.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-
-                viewModel.enemies.filter { !it.isDead && it.pos.z.toInt() == currentZ }.forEach { e ->
-                    val distStr = String.format("%.1f", e.pos.distanceTo(player.pos))
                     Text(
-                        text = "- ${e.name} (Dist: $distStr)",
-                        color = when (e.alertState) {
-                            AlertState.PATROLLING -> ImmersiveGreen
-                            AlertState.SUSPICIOUS -> ImmersiveAmber
-                            AlertState.ALERTED -> ImmersiveRed
-                        },
-                        fontSize = 8.5.sp,
+                        text = "RADAR",
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
-                }
 
-                Spacer(modifier = Modifier.height(6.dp))
-                HorizontalDivider(color = Color(0x0DFFFFFF), thickness = 1.dp)
-                Spacer(modifier = Modifier.height(4.dp))
-
-                logs.takeLast(3).forEach { log ->
-                    Text(
-                        text = "> $log",
-                        color = ImmersiveSlateMuted,
-                        fontSize = 8.sp,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1
-                    )
+                    Box(
+                        modifier = Modifier
+                            .background(threatDotColor.copy(alpha = 0.2f), CircleShape)
+                            .border(1.dp, threatDotColor, CircleShape)
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = "${activeEnemiesOnZ.size}",
+                            color = threatDotColor,
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
+
+            // B. Transient Floating Event Toast Ticker
+            AnimatedVisibility(
+                visible = latestToast != null,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { -20 }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { -20 })
+            ) {
+                val toast = latestToast
+                if (toast != null) {
+                    val (toastBg, toastIcon, toastTint) = when (toast.category) {
+                        LogCategory.COMBAT -> Triple(ImmersiveRed.copy(alpha = 0.15f), Icons.Default.FlashOn, ImmersiveRed)
+                        LogCategory.STEALTH -> Triple(ImmersiveGreen.copy(alpha = 0.15f), Icons.Default.NotificationsOff, ImmersiveGreen)
+                        LogCategory.QUEST -> Triple(ImmersiveLavender.copy(alpha = 0.15f), Icons.Default.Star, ImmersiveLavender)
+                        LogCategory.REWARD -> Triple(ImmersiveAmber.copy(alpha = 0.15f), Icons.Default.ShoppingCart, ImmersiveAmber)
+                        LogCategory.SYSTEM -> Triple(ImmersiveBlue.copy(alpha = 0.15f), Icons.Default.Build, ImmersiveBlue)
+                    }
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = ImmersiveBgDark.copy(alpha = 0.94f)),
+                        border = BorderStroke(1.dp, toastTint.copy(alpha = 0.7f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .widthIn(max = 240.dp)
+                            .clickable { isTelemetrySheetOpen = true }
+                            .testTag("hud_event_toast_ticker")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .background(toastBg, CircleShape)
+                                    .border(1.dp, toastTint, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = toastIcon,
+                                    contentDescription = null,
+                                    tint = toastTint,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                            }
+                            Text(
+                                text = toast.message,
+                                color = ImmersiveSlateLight,
+                                fontSize = 8.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // C. Interactive Telemetry & Event Inspector Modal
+        if (isTelemetrySheetOpen) {
+            AlertDialog(
+                onDismissRequest = { isTelemetrySheetOpen = false },
+                containerColor = ImmersiveBgDark,
+                title = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = ImmersiveLavender)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "TACTICAL TELEMETRY & EVENTS",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        IconButton(onClick = { isTelemetrySheetOpen = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        }
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Quick Position & State Telemetry Row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(ImmersiveBgHeader, RoundedCornerShape(8.dp))
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("POSITION", color = ImmersiveSlateMuted, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                                Text("X:${player.pos.x.toInt()} Y:${player.pos.y.toInt()} Z:${player.pos.z.toInt()}", color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                            }
+                            Column {
+                                Text("STANCE", color = ImmersiveSlateMuted, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                                Text(
+                                    if (player.isSneaking) "STEALTH (QUIET)" else "COMBAT (LOUD)",
+                                    color = if (player.isSneaking) ImmersiveGreen else ImmersiveAmber,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Column {
+                                Text("ENEMIES", color = ImmersiveSlateMuted, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+                                Text("${activeEnemiesOnZ.size} ACTIVE", color = threatDotColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Interactive Tactical Actions Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Button(
+                                onClick = { viewModel.triggerNoiseEvent(player.pos) },
+                                colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader),
+                                border = BorderStroke(1.dp, ImmersiveBlue),
+                                modifier = Modifier.weight(1f).height(32.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Icon(Icons.Default.Build, contentDescription = null, tint = ImmersiveBlue, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("NOISE PING", fontSize = 8.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                            }
+
+                            Button(
+                                onClick = { viewModel.toggleThreatZoneOverlay() },
+                                colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader),
+                                border = BorderStroke(1.dp, if (viewModel.isThreatZoneOverlayVisible) ImmersiveGreen else ImmersiveSlateMuted),
+                                modifier = Modifier.weight(1f).height(32.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = if (viewModel.isThreatZoneOverlayVisible) ImmersiveGreen else ImmersiveSlateMuted, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("THREATS", fontSize = 8.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                            }
+
+                            Button(
+                                onClick = { viewModel.clearLogEvents() },
+                                colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader),
+                                border = BorderStroke(1.dp, ImmersiveRed),
+                                modifier = Modifier.weight(1f).height(32.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = ImmersiveRed, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("CLEAR", fontSize = 8.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+
+                        HorizontalDivider(color = Color(0x33FFFFFF))
+
+                        // Category Filter Chips
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val categories = listOf(null to "ALL") + LogCategory.values().map { it to it.displayName }
+                            categories.forEach { (cat, label) ->
+                                val isSel = selectedLogCategoryFilter == cat
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = if (isSel) ImmersiveLavender else ImmersiveBgHeader),
+                                    border = BorderStroke(1.dp, if (isSel) ImmersiveLavender else Color(0x33FFFFFF)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { selectedLogCategoryFilter = cat }
+                                        .padding(vertical = 1.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            label,
+                                            fontSize = 7.sp,
+                                            color = if (isSel) Color.Black else Color.White,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Event Log List
+                        val filteredEvents = remember(viewModel.recentLogEvents.toList(), selectedLogCategoryFilter) {
+                            if (selectedLogCategoryFilter == null) {
+                                viewModel.recentLogEvents.toList().reversed()
+                            } else {
+                                viewModel.recentLogEvents.filter { it.category == selectedLogCategoryFilter }.reversed()
+                            }
+                        }
+
+                        if (filteredEvents.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(100.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("NO TELEMETRY EVENTS RECORDED", color = ImmersiveSlateMuted, fontSize = 9.5.sp, fontFamily = FontFamily.Monospace)
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 200.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                items(items = filteredEvents, key = { it.id }) { event ->
+                                    val (catColor, catIcon) = when (event.category) {
+                                        LogCategory.COMBAT -> ImmersiveRed to Icons.Default.FlashOn
+                                        LogCategory.STEALTH -> ImmersiveGreen to Icons.Default.NotificationsOff
+                                        LogCategory.QUEST -> ImmersiveLavender to Icons.Default.Star
+                                        LogCategory.REWARD -> ImmersiveAmber to Icons.Default.ShoppingCart
+                                        LogCategory.SYSTEM -> ImmersiveBlue to Icons.Default.Build
+                                    }
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(ImmersiveBgHeader.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                            .border(1.dp, catColor.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                            .padding(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .background(catColor.copy(alpha = 0.2f), CircleShape)
+                                                .border(1.dp, catColor, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(catIcon, contentDescription = null, tint = catColor, modifier = Modifier.size(11.dp))
+                                        }
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(event.category.displayName, color = catColor, fontSize = 7.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                                Text(event.formattedTime, color = ImmersiveSlateMuted, fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+                                            }
+                                            Text(event.message, color = Color.White, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { isTelemetrySheetOpen = false }) {
+                        Text("CLOSE", color = ImmersiveLavender, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
         }
 
         // =========================================================================

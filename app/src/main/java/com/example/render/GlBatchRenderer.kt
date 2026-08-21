@@ -5,7 +5,7 @@ import android.opengl.Matrix
 import androidx.compose.ui.graphics.Color
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.FloatBuffer
+import java.nio.ShortBuffer
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -14,7 +14,7 @@ class GlBatchRenderer {
     private val vertexShaderCode = """
         #version 300 es
         layout(location = 0) in vec2 aPosition;
-        layout(location = 1) in vec4 aColor;
+        layout(location = 1) in vec4 aColor; // normalized GL_UNSIGNED_BYTE -> vec4 [0.0..1.0]
         
         uniform mat4 uProjection;
         out vec4 vColor;
@@ -27,7 +27,7 @@ class GlBatchRenderer {
 
     private val fragmentShaderCode = """
         #version 300 es
-        precision mediump float;
+        precision lowp float;
         
         in vec4 vColor;
         out vec4 fragColor;
@@ -39,14 +39,13 @@ class GlBatchRenderer {
         void main() {
             vec4 col = vColor;
             
+            // Branchless cel-shading calculation
             if (uEnableCelShading && col.a > 0.05) {
                 float luma = dot(col.rgb, vec3(0.299, 0.587, 0.114));
                 if (luma > 0.02) {
                     float bands = max(uCelBands, 2.0);
-                    float quantized = floor(luma * bands) / (bands - 1.0);
-                    quantized = max(quantized, 0.30); // Preserve shadow floor
-                    float scale = quantized / luma;
-                    col.rgb = clamp(col.rgb * scale * 1.08, 0.0, 1.0);
+                    float quantized = max(floor(luma * bands) / (bands - 1.0), 0.30);
+                    col.rgb = clamp(col.rgb * (quantized / luma) * 1.08, 0.0, 1.0);
                 }
             }
             
@@ -66,18 +65,29 @@ class GlBatchRenderer {
     private var uEnableCelShadingLoc: Int = -1
     private var uCelBandsLoc: Int = -1
 
-    private val maxVertices = 65536
-    private val floatsPerVertex = 6 // x, y, r, g, b, a
-    private val vertexStrideBytes = floatsPerVertex * 4
+    // VBO / EBO / VAO Configuration
+    // 32768 vertices max per batch (fits safely in 16-bit short indices)
+    private val maxVertices = 32768
+    private val maxIndices = 65536
+    private val floatsPerPosition = 2
+    private val bytesPerColor = 4 // R, G, B, A normalized unsigned bytes
+    private val vertexStrideBytes = floatsPerPosition * 4 + bytesPerColor // 12 bytes per vertex!
 
-    private val floatBuffer: FloatBuffer = ByteBuffer
+    private val vertexByteBuffer: ByteBuffer = ByteBuffer
         .allocateDirect(maxVertices * vertexStrideBytes)
         .order(ByteOrder.nativeOrder())
-        .asFloatBuffer()
+
+    private val indexShortBuffer: ShortBuffer = ByteBuffer
+        .allocateDirect(maxIndices * 2)
+        .order(ByteOrder.nativeOrder())
+        .asShortBuffer()
 
     private var vaoId: Int = 0
     private var vboId: Int = 0
+    private var eboId: Int = 0
+
     private var currentVertexCount = 0
+    private var currentIndexCount = 0
 
     private val projectionMatrix = FloatArray(16)
 
@@ -103,27 +113,40 @@ class GlBatchRenderer {
         GLES30.glGenBuffers(1, vbos, 0)
         vboId = vbos[0]
 
+        val ebos = IntArray(1)
+        GLES30.glGenBuffers(1, ebos, 0)
+        eboId = ebos[0]
+
         GLES30.glBindVertexArray(vaoId)
+
+        // Bind VBO (Array Buffer) with orphan dynamic draw initialization
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboId)
         GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, maxVertices * vertexStrideBytes, null, GLES30.GL_DYNAMIC_DRAW)
 
-        // Attribute 0: aPosition (2 floats)
+        // Bind EBO (Element Array Buffer)
+        GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, eboId)
+        GLES30.glBufferData(GLES30.GL_ELEMENT_ARRAY_BUFFER, maxIndices * 2, null, GLES30.GL_DYNAMIC_DRAW)
+
+        // Attribute 0: aPosition (2 floats, offset 0)
         GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, vertexStrideBytes, 0)
         GLES30.glEnableVertexAttribArray(0)
 
-        // Attribute 1: aColor (4 floats)
-        GLES30.glVertexAttribPointer(1, 4, GLES30.GL_FLOAT, false, vertexStrideBytes, 2 * 4)
+        // Attribute 1: aColor (4 normalized unsigned bytes, offset 8)
+        GLES30.glVertexAttribPointer(1, 4, GLES30.GL_UNSIGNED_BYTE, true, vertexStrideBytes, 8)
         GLES30.glEnableVertexAttribArray(1)
 
         GLES30.glBindVertexArray(0)
 
+        // Default OpenGL state optimizations
         GLES30.glEnable(GLES30.GL_BLEND)
         GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
+        GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+        GLES30.glDepthFunc(GLES30.GL_LEQUAL)
     }
 
     fun setScreenSize(width: Int, height: Int) {
         GLES30.glViewport(0, 0, width, height)
-        Matrix.orthoM(projectionMatrix, 0, 0f, width.toFloat(), height.toFloat(), 0f, -1f, 1f)
+        Matrix.orthoM(projectionMatrix, 0, 0f, width.toFloat(), height.toFloat(), 0f, -1000f, 1000f)
     }
 
     fun beginBatch(
@@ -137,37 +160,57 @@ class GlBatchRenderer {
         GLES30.glUniform1i(uEnableCelShadingLoc, if (enableCelShading) 1 else 0)
         GLES30.glUniform1f(uCelBandsLoc, celBands)
 
-        floatBuffer.clear()
+        vertexByteBuffer.clear()
+        indexShortBuffer.clear()
         currentVertexCount = 0
+        currentIndexCount = 0
     }
 
     fun flush() {
-        if (currentVertexCount == 0) return
+        if (currentIndexCount == 0) return
 
-        floatBuffer.flip()
+        vertexByteBuffer.flip()
+        indexShortBuffer.flip()
+
         GLES30.glBindVertexArray(vaoId)
-        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboId)
-        GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, currentVertexCount * vertexStrideBytes, floatBuffer)
 
-        GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, currentVertexCount)
+        // VBO Orphan streaming to prevent CPU-GPU pipeline stalls
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboId)
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, maxVertices * vertexStrideBytes, null, GLES30.GL_DYNAMIC_DRAW)
+        GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, currentVertexCount * vertexStrideBytes, vertexByteBuffer)
+
+        // EBO Orphan streaming
+        GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, eboId)
+        GLES30.glBufferData(GLES30.GL_ELEMENT_ARRAY_BUFFER, maxIndices * 2, null, GLES30.GL_DYNAMIC_DRAW)
+        GLES30.glBufferSubData(GLES30.GL_ELEMENT_ARRAY_BUFFER, 0, currentIndexCount * 2, indexShortBuffer)
+
+        // Draw indexed primitives
+        GLES30.glDrawElements(GLES30.GL_TRIANGLES, currentIndexCount, GLES30.GL_UNSIGNED_SHORT, 0)
 
         GLES30.glBindVertexArray(0)
 
-        floatBuffer.clear()
+        vertexByteBuffer.clear()
+        indexShortBuffer.clear()
         currentVertexCount = 0
+        currentIndexCount = 0
     }
 
-    private fun addVertex(x: Float, y: Float, color: Color) {
-        if (currentVertexCount >= maxVertices - 6) {
+    private fun addVertexPacked(x: Float, y: Float, r: Byte, g: Byte, b: Byte, a: Byte): Short {
+        val index = currentVertexCount
+        vertexByteBuffer.putFloat(x)
+        vertexByteBuffer.putFloat(y)
+        vertexByteBuffer.put(r)
+        vertexByteBuffer.put(g)
+        vertexByteBuffer.put(b)
+        vertexByteBuffer.put(a)
+        currentVertexCount++
+        return index.toShort()
+    }
+
+    private fun checkCapacity(neededVertices: Int, neededIndices: Int) {
+        if (currentVertexCount + neededVertices > maxVertices || currentIndexCount + neededIndices > maxIndices) {
             flush()
         }
-        floatBuffer.put(x)
-        floatBuffer.put(y)
-        floatBuffer.put(color.red)
-        floatBuffer.put(color.green)
-        floatBuffer.put(color.blue)
-        floatBuffer.put(color.alpha)
-        currentVertexCount++
     }
 
     fun drawTriangle(
@@ -176,9 +219,21 @@ class GlBatchRenderer {
         x3: Float, y3: Float,
         color: Color
     ) {
-        addVertex(x1, y1, color)
-        addVertex(x2, y2, color)
-        addVertex(x3, y3, color)
+        checkCapacity(3, 3)
+
+        val r = (color.red.coerceIn(0f, 1f) * 255f).toInt().toByte()
+        val g = (color.green.coerceIn(0f, 1f) * 255f).toInt().toByte()
+        val b = (color.blue.coerceIn(0f, 1f) * 255f).toInt().toByte()
+        val a = (color.alpha.coerceIn(0f, 1f) * 255f).toInt().toByte()
+
+        val i1 = addVertexPacked(x1, y1, r, g, b, a)
+        val i2 = addVertexPacked(x2, y2, r, g, b, a)
+        val i3 = addVertexPacked(x3, y3, r, g, b, a)
+
+        indexShortBuffer.put(i1)
+        indexShortBuffer.put(i2)
+        indexShortBuffer.put(i3)
+        currentIndexCount += 3
     }
 
     fun drawQuad(
@@ -188,15 +243,27 @@ class GlBatchRenderer {
         x4: Float, y4: Float,
         color: Color
     ) {
-        // Triangle 1
-        addVertex(x1, y1, color)
-        addVertex(x2, y2, color)
-        addVertex(x3, y3, color)
+        checkCapacity(4, 6)
 
-        // Triangle 2
-        addVertex(x1, y1, color)
-        addVertex(x3, y3, color)
-        addVertex(x4, y4, color)
+        val r = (color.red.coerceIn(0f, 1f) * 255f).toInt().toByte()
+        val g = (color.green.coerceIn(0f, 1f) * 255f).toInt().toByte()
+        val b = (color.blue.coerceIn(0f, 1f) * 255f).toInt().toByte()
+        val a = (color.alpha.coerceIn(0f, 1f) * 255f).toInt().toByte()
+
+        val i1 = addVertexPacked(x1, y1, r, g, b, a)
+        val i2 = addVertexPacked(x2, y2, r, g, b, a)
+        val i3 = addVertexPacked(x3, y3, r, g, b, a)
+        val i4 = addVertexPacked(x4, y4, r, g, b, a)
+
+        // Triangle 1: 1 -> 2 -> 3
+        indexShortBuffer.put(i1)
+        indexShortBuffer.put(i2)
+        indexShortBuffer.put(i3)
+        // Triangle 2: 1 -> 3 -> 4
+        indexShortBuffer.put(i1)
+        indexShortBuffer.put(i3)
+        indexShortBuffer.put(i4)
+        currentIndexCount += 6
     }
 
     fun drawLine(
@@ -335,6 +402,25 @@ class GlBatchRenderer {
         }
     }
 
+    fun release() {
+        if (program != 0) {
+            GLES30.glDeleteProgram(program)
+            program = 0
+        }
+        if (vaoId != 0) {
+            GLES30.glDeleteVertexArrays(1, intArrayOf(vaoId), 0)
+            vaoId = 0
+        }
+        if (vboId != 0) {
+            GLES30.glDeleteBuffers(1, intArrayOf(vboId), 0)
+            vboId = 0
+        }
+        if (eboId != 0) {
+            GLES30.glDeleteBuffers(1, intArrayOf(eboId), 0)
+            eboId = 0
+        }
+    }
+
     private fun loadShader(type: Int, shaderCode: String): Int {
         val shader = GLES30.glCreateShader(type)
         GLES30.glShaderSource(shader, shaderCode)
@@ -342,3 +428,4 @@ class GlBatchRenderer {
         return shader
     }
 }
+

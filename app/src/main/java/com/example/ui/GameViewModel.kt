@@ -180,6 +180,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     val consoleLogs = mutableStateListOf<String>()
 
+    var recentLogEvents = androidx.compose.runtime.mutableStateListOf<LogEvent>()
+        private set
+
+    var latestToastEvent by mutableStateOf<LogEvent?>(null)
+        private set
+
+    fun dismissToastEvent() {
+        latestToastEvent = null
+    }
+
+    fun clearLogEvents() {
+        recentLogEvents.clear()
+        consoleLogs.clear()
+    }
+
     var skillNodes by mutableStateOf(SkillNode.getSkillTree())
         private set
 
@@ -285,10 +300,26 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logToConsole(message: String) {
-        if (consoleLogs.size > 8) {
+        if (consoleLogs.size > 15) {
             consoleLogs.removeAt(0)
         }
         consoleLogs.add(message)
+
+        val upper = message.uppercase()
+        val category = when {
+            upper.contains("DAMAGE") || upper.contains("DECEASED") || upper.contains("ATTACK") || upper.contains("COLLAPSE") || upper.contains("STRIKE") || upper.contains("DETONAT") -> LogCategory.COMBAT
+            upper.contains("STEALTH") || upper.contains("SNEAK") || upper.contains("CROUCH") || upper.contains("QUIET") || upper.contains("CLOAK") || upper.contains("NOISE") || upper.contains("SUSPICIOUS") || upper.contains("ALERTED") || upper.contains("VISION") -> LogCategory.STEALTH
+            upper.contains("QUEST") || upper.contains("DIRECTIVE") || upper.contains("OBJECTIVE") || upper.contains("MISSION") -> LogCategory.QUEST
+            upper.contains("CREDITS") || upper.contains("XP") || upper.contains("REWARD") || upper.contains("PURCHASED") || upper.contains("SKILL") || upper.contains("ITEM") || upper.contains("MED-PACK") || upper.contains("E-CELL") -> LogCategory.REWARD
+            else -> LogCategory.SYSTEM
+        }
+
+        val event = LogEvent(category = category, message = message)
+        if (recentLogEvents.size >= 25) {
+            recentLogEvents.removeAt(0)
+        }
+        recentLogEvents.add(event)
+        latestToastEvent = event
     }
 
     fun resetGameEntities() {
@@ -888,3 +919,25 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
+
+enum class LogCategory(val displayName: String) {
+    STEALTH("STEALTH"),
+    COMBAT("COMBAT"),
+    SYSTEM("SYSTEM"),
+    QUEST("DIRECTIVE"),
+    REWARD("LOOT & XP")
+}
+
+data class LogEvent(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val category: LogCategory,
+    val message: String,
+    val timestampMs: Long = System.currentTimeMillis()
+) {
+    val formattedTime: String
+        get() {
+            val secondsAgo = ((System.currentTimeMillis() - timestampMs) / 1000).coerceAtLeast(0)
+            return if (secondsAgo < 60) "${secondsAgo}s ago" else "${secondsAgo / 60}m ago"
+        }
+}
+
