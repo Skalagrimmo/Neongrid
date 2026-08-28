@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -486,7 +487,7 @@ fun IsoActionGridOverlay(
                             Text("MOVE RANGE", fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                         },
                         leadingIcon = {
-                            Icon(Icons.Default.DirectionsRun, contentDescription = "Toggle Move Range", modifier = Modifier.size(12.dp))
+                            Icon(Icons.AutoMirrored.Filled.DirectionsRun, contentDescription = "Toggle Move Range", modifier = Modifier.size(12.dp))
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = CyberDarkCyan,
@@ -626,7 +627,7 @@ fun IsoActionGridOverlay(
                     // MOVE ACTION BUTTON
                     ActionButtonPill(
                         label = "MOVE",
-                        icon = Icons.Default.DirectionsRun,
+                        icon = Icons.AutoMirrored.Filled.DirectionsRun,
                         isActive = activeAction == GridActionType.MOVE,
                         activeColor = CyberNeonCyan,
                         onClick = { viewModel.setGridAction(GridActionType.MOVE) },

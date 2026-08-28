@@ -53,6 +53,15 @@ fun GameApp(
                         },
                         onOpenNativeIsoCanvas = {
                             viewModel.changeScreen(GameViewModel.Screen.NATIVE_ISO_CANVAS)
+                        },
+                        onOpenMissions = {
+                            viewModel.changeScreen(GameViewModel.Screen.MISSION_DISPATCH)
+                        },
+                        onOpenCyberware = {
+                            viewModel.changeScreen(GameViewModel.Screen.CYBERWARE_LAB)
+                        },
+                        onOpenCodex = {
+                            viewModel.changeScreen(GameViewModel.Screen.CODEX_TERMINAL)
                         }
                     )
                 }
@@ -99,6 +108,15 @@ fun GameApp(
                             },
                             onOpenLoadout = {
                                 viewModel.changeScreen(GameViewModel.Screen.LOADOUT)
+                            },
+                            onOpenMissions = {
+                                viewModel.changeScreen(GameViewModel.Screen.MISSION_DISPATCH)
+                            },
+                            onOpenCyberware = {
+                                viewModel.changeScreen(GameViewModel.Screen.CYBERWARE_LAB)
+                            },
+                            onOpenCodex = {
+                                viewModel.changeScreen(GameViewModel.Screen.CODEX_TERMINAL)
                             }
                         )
 
@@ -242,6 +260,33 @@ fun GameApp(
                     NativeIsoCanvasScreen(
                         onBackToMenu = {
                             viewModel.changeScreen(GameViewModel.Screen.MENU)
+                        }
+                    )
+                }
+
+                GameViewModel.Screen.MISSION_DISPATCH -> {
+                    MissionDispatchScreen(
+                        viewModel = viewModel,
+                        onBackToGame = {
+                            viewModel.changeScreen(GameViewModel.Screen.PLAY)
+                        }
+                    )
+                }
+
+                GameViewModel.Screen.CYBERWARE_LAB -> {
+                    CyberwareScreen(
+                        viewModel = viewModel,
+                        onBackToGame = {
+                            viewModel.changeScreen(GameViewModel.Screen.PLAY)
+                        }
+                    )
+                }
+
+                GameViewModel.Screen.CODEX_TERMINAL -> {
+                    CodexScreen(
+                        viewModel = viewModel,
+                        onBackToGame = {
+                            viewModel.changeScreen(GameViewModel.Screen.PLAY)
                         }
                     )
                 }

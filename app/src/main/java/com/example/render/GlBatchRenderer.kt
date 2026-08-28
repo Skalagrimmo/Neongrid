@@ -337,31 +337,33 @@ class GlBatchRenderer {
         val topCx = cx
         val topCy = cy - wallHeight
 
-        // Top Face
+        // Top Roof Face
         drawIsoDiamond(topCx, topCy, halfW, halfH, topColor, strokeColor, strokeWidth)
 
-        // Left Face
+        // Left Face Quad: (topCx - halfW, topCy) -> (topCx, topCy + halfH) -> (cx, cy + halfH) -> (cx - halfW, cy)
         drawQuad(
-            topCx - halfW, topCy + halfH,
-            topCx, topCy + halfH * 2f,
-            cx, cy + halfH * 2f,
-            cx - halfW, cy + halfH,
+            topCx - halfW, topCy,
+            topCx, topCy + halfH,
+            cx, cy + halfH,
+            cx - halfW, cy,
             leftColor
         )
 
-        // Right Face
+        // Right Face Quad: (topCx, topCy + halfH) -> (topCx + halfW, topCy) -> (cx + halfW, cy) -> (cx, cy + halfH)
         drawQuad(
-            topCx, topCy + halfH * 2f,
-            topCx + halfW, topCy + halfH,
-            cx + halfW, cy + halfH,
-            cx, cy + halfH * 2f,
+            topCx, topCy + halfH,
+            topCx + halfW, topCy,
+            cx + halfW, cy,
+            cx, cy + halfH,
             rightColor
         )
 
         if (strokeColor != null) {
-            drawLine(topCx - halfW, topCy + halfH, cx - halfW, cy + halfH, strokeColor, strokeWidth)
-            drawLine(topCx, topCy + halfH * 2f, cx, cy + halfH * 2f, strokeColor, strokeWidth)
-            drawLine(topCx + halfW, topCy + halfH, cx + halfW, cy + halfH, strokeColor, strokeWidth)
+            drawLine(topCx - halfW, topCy, cx - halfW, cy, strokeColor, strokeWidth)
+            drawLine(topCx, topCy + halfH, cx, cy + halfH, strokeColor, strokeWidth)
+            drawLine(topCx + halfW, topCy, cx + halfW, cy, strokeColor, strokeWidth)
+            drawLine(cx - halfW, cy, cx, cy + halfH, strokeColor, strokeWidth)
+            drawLine(cx, cy + halfH, cx + halfW, cy, strokeColor, strokeWidth)
         }
     }
 

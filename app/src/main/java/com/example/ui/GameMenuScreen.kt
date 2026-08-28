@@ -4,9 +4,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,7 +28,10 @@ fun GameMenuScreen(
     onStartNewGame: () -> Unit,
     onLoadGame: () -> Unit,
     onViewControls: () -> Unit,
-    onOpenNativeIsoCanvas: () -> Unit
+    onOpenNativeIsoCanvas: () -> Unit,
+    onOpenMissions: () -> Unit = {},
+    onOpenCyberware: () -> Unit = {},
+    onOpenCodex: () -> Unit = {}
 ) {
     Box(
         modifier = modifier
@@ -146,6 +147,63 @@ fun GameMenuScreen(
                         color = Color.White,
                         fontFamily = FontFamily.Monospace
                     )
+                }
+            }
+
+            // Tactical Subsystems Quick Access (Missions, Cyberware, Codex)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        SoundManager.playMenuClick()
+                        onOpenMissions()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.7f)),
+                    border = BorderStroke(1.dp, ImmersiveGreen.copy(alpha = 0.8f)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).height(44.dp).testTag("menu_missions_button"),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("MISSIONS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ImmersiveGreen, fontFamily = FontFamily.Monospace)
+                        Text("CONTRACTS", fontSize = 7.5.sp, color = ImmersiveSlateMuted, fontFamily = FontFamily.Monospace)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        SoundManager.playMenuClick()
+                        onOpenCyberware()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.7f)),
+                    border = BorderStroke(1.dp, ImmersiveAmber.copy(alpha = 0.8f)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).height(44.dp).testTag("menu_cyberware_button"),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("CYBERWARE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = ImmersiveAmber, fontFamily = FontFamily.Monospace)
+                        Text("IMPLANTS", fontSize = 7.5.sp, color = ImmersiveSlateMuted, fontFamily = FontFamily.Monospace)
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        SoundManager.playMenuClick()
+                        onOpenCodex()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgHeader.copy(alpha = 0.7f)),
+                    border = BorderStroke(1.dp, CyberNeonCyan.copy(alpha = 0.8f)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).height(44.dp).testTag("menu_codex_button"),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("CODEX", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = CyberNeonCyan, fontFamily = FontFamily.Monospace)
+                        Text("DECK HACK", fontSize = 7.5.sp, color = ImmersiveSlateMuted, fontFamily = FontFamily.Monospace)
+                    }
                 }
             }
 

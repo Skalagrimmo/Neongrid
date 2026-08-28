@@ -41,7 +41,10 @@ fun GameHud(
     viewModel: GameViewModel,
     onBackToMenu: () -> Unit,
     onOpenSkillTree: () -> Unit,
-    onOpenLoadout: () -> Unit
+    onOpenLoadout: () -> Unit,
+    onOpenMissions: () -> Unit = {},
+    onOpenCyberware: () -> Unit = {},
+    onOpenCodex: () -> Unit = {}
 ) {
     val player = viewModel.player
     val logs = viewModel.consoleLogs
@@ -266,6 +269,33 @@ fun GameHud(
                             fontSize = 9.5.sp,
                             fontFamily = FontFamily.Monospace,
                             color = if (isTacticalOn) ImmersiveGreen else ImmersiveSlateLight
+                        )
+                    }
+
+                    // Isometric Grid Coordinate Overlay toggle button
+                    val isIsoGridOn = viewModel.isIsoCoordinateGridActive
+                    Button(
+                        onClick = { viewModel.toggleIsoCoordinateGrid() },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isIsoGridOn) CyberDarkCyan else ImmersiveBgHeader),
+                        border = BorderStroke(1.dp, if (isIsoGridOn) CyberNeonCyan else ImmersiveSlateMuted),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        modifier = Modifier
+                            .height(30.dp)
+                            .testTag("hud_iso_grid_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GridOn,
+                            contentDescription = "Isometric Coordinate Grid",
+                            tint = if (isIsoGridOn) CyberNeonCyan else ImmersiveSlateLight,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = "GRID",
+                            fontSize = 9.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isIsoGridOn) CyberNeonCyan else ImmersiveSlateLight
                         )
                     }
 
@@ -647,6 +677,70 @@ fun GameHud(
                                 player.isSneaking = (newStance == com.example.stealth.Stance.CROUCHING || newStance == com.example.stealth.Stance.SLIDING)
                             }
                         )
+
+                        HorizontalDivider(color = Color(0x33FFFFFF))
+
+                        // Quick Tactical Matrix Navigation Hub
+                        Text("TACTICAL MATRIX SUB-SYSTEMS", color = ImmersiveLavender, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    isFullHudExpanded = false
+                                    onOpenMissions()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgDark),
+                                border = BorderStroke(1.dp, ImmersiveGreen),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f).height(32.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Assignment, contentDescription = null, tint = ImmersiveGreen, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(3.dp))
+                                    Text("MISSIONS", color = ImmersiveGreen, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    isFullHudExpanded = false
+                                    onOpenCyberware()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgDark),
+                                border = BorderStroke(1.dp, ImmersiveAmber),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f).height(32.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Memory, contentDescription = null, tint = ImmersiveAmber, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(3.dp))
+                                    Text("CYBERWARE", color = ImmersiveAmber, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    isFullHudExpanded = false
+                                    onOpenCodex()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = ImmersiveBgDark),
+                                border = BorderStroke(1.dp, CyberNeonCyan),
+                                shape = RoundedCornerShape(6.dp),
+                                modifier = Modifier.weight(1f).height(32.dp),
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.LockOpen, contentDescription = null, tint = CyberNeonCyan, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(3.dp))
+                                    Text("CODEX", color = CyberNeonCyan, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1297,6 +1391,32 @@ fun GameHud(
                         fontSize = 8.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = ImmersiveBlue,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                // Overclock Matrix Neural Burst Button
+                val hasSynapticImplant = viewModel.cyberwareList.any { it.id == "neural_synaptic_matrix" && it.isInstalled }
+                val isOverclocking = viewModel.isOverclockActive
+                val overclockCooldown = viewModel.overclockCooldown
+
+                Button(
+                    onClick = { viewModel.triggerOverclock() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isOverclocking) ImmersiveAmber else ImmersiveBgHeader
+                    ),
+                    border = BorderStroke(1.dp, if (isOverclocking) Color.White else if (hasSynapticImplant) ImmersiveAmber else ImmersiveSlateMuted),
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(26.dp).testTag("hud_overclock_button")
+                ) {
+                    Text(
+                        text = if (isOverclocking) "OVERCLOCK (${viewModel.overclockTimer.toInt()}S)"
+                               else if (overclockCooldown > 0f) "COOLDOWN (${overclockCooldown.toInt()}S)"
+                               else "OVERCLOCK",
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isOverclocking) Color.Black else if (hasSynapticImplant) ImmersiveAmber else ImmersiveSlateMuted,
                         fontFamily = FontFamily.Monospace
                     )
                 }

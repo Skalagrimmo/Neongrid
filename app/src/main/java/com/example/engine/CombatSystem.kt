@@ -315,8 +315,8 @@ class CombatSystem(private val levelManager: LevelManager) {
     }
 
     private fun checkPlayerLevelUp(player: Player) {
-        val xpNeeded = player.level * 100
-        if (player.xp >= xpNeeded) {
+        while (player.xp >= player.level * 100) {
+            val xpNeeded = player.level * 100
             player.xp -= xpNeeded
             player.level++
             player.skillPoints += 2

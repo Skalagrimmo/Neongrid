@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -579,7 +580,7 @@ private fun ArchetypeClassSection(
 
                     val icon: ImageVector = when (node.id) {
                         "ronin_base" -> Icons.Default.GpsFixed
-                        "ronin_speed" -> Icons.Default.DirectionsRun
+                        "ronin_speed" -> Icons.AutoMirrored.Filled.DirectionsRun
                         "ronin_crit" -> Icons.Default.Bolt
                         "ronin_ultimate" -> Icons.Default.AutoAwesome
                         "tech_base" -> Icons.Default.Terminal

@@ -132,32 +132,8 @@ fun GameCanvas(
         }
     }
 
-    var dragAccumulator by remember { mutableStateOf(Offset.Zero) }
-
     Box(
-        modifier = modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { dragAccumulator = Offset.Zero },
-                    onDragEnd = { dragAccumulator = Offset.Zero },
-                    onDragCancel = { dragAccumulator = Offset.Zero },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        dragAccumulator += dragAmount
-
-                        if (dragAccumulator.getDistance() > 10f) {
-                            val normX = (dragAccumulator.x / 40f).coerceIn(-1.5f, 1.5f)
-                            val normY = (dragAccumulator.y / 40f).coerceIn(-1.5f, 1.5f)
-
-                            val dxGrid = (normX / 1f + normY / 0.55f) / 2f * 1.2f
-                            val dyGrid = (-normX / 1f + normY / 0.55f) / 2f * 1.2f
-
-                            viewModel.movePlayer(dxGrid, dyGrid)
-                        }
-                    }
-                )
-            }
+        modifier = modifier.fillMaxSize()
     ) {
         AndroidView(
             factory = { context ->
@@ -171,14 +147,28 @@ fun GameCanvas(
             modifier = Modifier.fillMaxSize()
         )
 
+        // Custom Isometric Grid Coordinate Rendering and Touch Navigation Composable
+        if (viewModel.isIsoCoordinateGridActive) {
+            IsometricGridNavigationCanvas(
+                viewModel = viewModel,
+                tileWidth = tileWidth,
+                zHeightOffset = zHeightOffset,
+                renderCamX = renderCamX,
+                renderCamY = renderCamY,
+                onDirectMovementVector = onMovePlayer
+            )
+        }
+
         // Grid-based action & movement range overlay with enemy threat zones
-        IsoActionGridOverlay(
-            viewModel = viewModel,
-            tileWidth = tileWidth,
-            zHeightOffset = zHeightOffset,
-            renderCamX = renderCamX,
-            renderCamY = renderCamY
-        )
+        if (viewModel.isTacticalOverlayActive || viewModel.activeGridAction != GridActionType.NONE) {
+            IsoActionGridOverlay(
+                viewModel = viewModel,
+                tileWidth = tileWidth,
+                zHeightOffset = zHeightOffset,
+                renderCamX = renderCamX,
+                renderCamY = renderCamY
+            )
+        }
     }
 }
 

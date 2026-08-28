@@ -59,7 +59,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         SKILL_TREE,
         LOADOUT,
         CONTROLS,
-        NATIVE_ISO_CANVAS
+        NATIVE_ISO_CANVAS,
+        MISSION_DISPATCH,
+        CYBERWARE_LAB,
+        CODEX_TERMINAL
     }
 
     private val screenStateController = ScreenStateController(Screen.MENU)
@@ -157,6 +160,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     var isTacticalOverlayActive by mutableStateOf(false)
         private set
 
+    var isIsoCoordinateGridActive by mutableStateOf(true)
+        private set
+
     var activeGridAction by mutableStateOf(GridActionType.NONE)
         private set
 
@@ -196,6 +202,28 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     var skillNodes by mutableStateOf(SkillNode.getSkillTree())
+        private set
+
+    // Tactical Mission Contracts
+    var availableMissions by mutableStateOf(MissionContract.DEFAULT_MISSIONS)
+        private set
+    var activeMission by mutableStateOf<MissionContract?>(MissionContract.DEFAULT_MISSIONS.first())
+        private set
+
+    // Cyberware Neural Implants
+    var cyberwareList by mutableStateOf(CyberwareImplant.ALL_CYBERWARE)
+        private set
+
+    // Encrypted Corporate Datashards
+    var datashards by mutableStateOf(Datashard.DEFAULT_SHARDS)
+        private set
+
+    // Active Overclock Matrix State
+    var isOverclockActive by mutableStateOf(false)
+        private set
+    var overclockTimer by mutableStateOf(0f)
+        private set
+    var overclockCooldown by mutableStateOf(0f)
         private set
 
     val activeProjectiles = mutableStateListOf<Pair<Point3D, Point3D>>()
@@ -246,7 +274,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun changeScreen(screen: Screen) {
-        currentScreen = screen
+        screenStateController.changeTo(screen)
         if (screen == Screen.PLAY && !gameLoopController.isRunning) {
             startGameLoop()
         } else if (screen != Screen.PLAY) {
@@ -504,9 +532,21 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 6. Energy Regeneration
+        // 6. Energy Regeneration & Overclock Matrix Update
         if (player.energy < player.maxEnergy) {
             player.energy = (player.energy + 4.0f * dt).coerceAtMost(player.maxEnergy)
+        }
+
+        if (isOverclockActive) {
+            overclockTimer -= dt
+            if (overclockTimer <= 0f) {
+                isOverclockActive = false
+                overclockTimer = 0f
+                logToConsole("OVERCLOCK MATRIX DISENGAGED: NEURAL COOLDOWN INITIATED")
+            }
+        }
+        if (overclockCooldown > 0f) {
+            overclockCooldown = (overclockCooldown - dt).coerceAtLeast(0f)
         }
 
         player = player.copy()
@@ -571,6 +611,27 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         isTacticalOverlayActive = !isTacticalOverlayActive
         AudioManager.playInteract()
         logToConsole("TACTICAL OVERLAY: ${if (isTacticalOverlayActive) "ACTIVE" else "INACTIVE"}")
+    }
+
+    fun toggleIsoCoordinateGrid() {
+        isIsoCoordinateGridActive = !isIsoCoordinateGridActive
+        AudioManager.playInteract()
+        logToConsole("ISOMETRIC COORDINATE MATRIX: ${if (isIsoCoordinateGridActive) "ONLINE" else "OFFLINE"}")
+    }
+
+    fun dash(dx: Float = 0f, dy: Float = 0f) {
+        if (isGameOver || isGameWon || isHackingActive) return
+        val cost = 12f
+        if (player.energy >= cost) {
+            player = player.copy(energy = (player.energy - cost).coerceAtLeast(0f))
+            val dashDx = if (dx != 0f || dy != 0f) dx else lastMoveX * 2.5f
+            val dashDy = if (dx != 0f || dy != 0f) dy else lastMoveY * 2.5f
+            movePlayer(dashDx, dashDy)
+            SoundManager.playSkillActivation("DASH")
+            logToConsole("TACTICAL DASH BURST EXECUTED (-12 ENERGY)")
+        } else {
+            logToConsole("INSUFFICIENT ENERGY FOR DASH BURST")
+        }
     }
 
     fun setGridAction(action: GridActionType) {
@@ -756,6 +817,118 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         saveGameProgress()
     }
 
+    fun getCyberwareHealthBonus(): Float = cyberwareList.filter { it.isInstalled }.sumOf { it.statBoostHealth.toDouble() }.toFloat()
+    fun getCyberwareEnergyBonus(): Float = cyberwareList.filter { it.isInstalled }.sumOf { it.statBoostEnergy.toDouble() }.toFloat()
+    fun getCyberwareDamageBonus(): Float = cyberwareList.filter { it.isInstalled }.sumOf { it.statBoostDamage.toDouble() }.toFloat()
+    fun getCyberwareSpeedBonus(): Float = cyberwareList.filter { it.isInstalled }.sumOf { it.statBoostSpeed.toDouble() }.toFloat()
+    fun getCyberwareStealthBonus(): Float = cyberwareList.filter { it.isInstalled }.sumOf { it.statBoostStealth.toDouble() }.toFloat()
+    fun getCyberwareArmorBonus(): Float = cyberwareList.filter { it.isInstalled }.sumOf { it.statBoostArmor.toDouble() }.toFloat()
+
+    fun recalculatePlayerStats() {
+        val totalHealthBoost = player.equippedWeapon.statBoostHealth + player.equippedCore.statBoostHealth + player.equippedSystem.statBoostHealth + getCyberwareHealthBonus()
+        val totalEnergyBoost = player.equippedWeapon.statBoostEnergy + player.equippedCore.statBoostEnergy + player.equippedSystem.statBoostEnergy + getCyberwareEnergyBonus()
+
+        val newMaxHealth = 100f + totalHealthBoost
+        val newMaxEnergy = 80f + totalEnergyBoost
+
+        player = player.copy(
+            maxHealth = newMaxHealth,
+            maxEnergy = newMaxEnergy,
+            health = player.health.coerceAtMost(newMaxHealth),
+            energy = player.energy.coerceAtMost(newMaxEnergy)
+        )
+        saveGameProgress()
+    }
+
+    fun selectMission(mission: MissionContract) {
+        activeMission = mission.copy(
+            currentTerminalsHacked = 0,
+            currentEnemiesEliminated = 0,
+            isExtractionReady = false
+        )
+        logToConsole("TACTICAL DISPATCH: [${mission.codename}] ENGAGED")
+        logToConsole("HAZARD PROTOCOL: ${mission.hazard.title}")
+    }
+
+    fun installCyberware(implantId: String) {
+        val implant = cyberwareList.find { it.id == implantId } ?: return
+        if (!implant.isInstalled && player.credits < implant.costCredits) {
+            logToConsole("INSUFFICIENT CREDITS: NEED ${implant.costCredits}C")
+            return
+        }
+
+        cyberwareList = cyberwareList.map { item ->
+            if (item.id == implantId) {
+                if (!item.isInstalled) {
+                    player = player.copy(credits = player.credits - item.costCredits)
+                    logToConsole("NEURAL IMPLANT INSTALLED: ${item.name}")
+                    item.copy(isInstalled = true)
+                } else {
+                    item
+                }
+            } else if (item.slot == implant.slot && !implant.isInstalled) {
+                item.copy(isInstalled = false)
+            } else {
+                item
+            }
+        }
+        recalculatePlayerStats()
+    }
+
+    fun uninstallCyberware(implantId: String) {
+        cyberwareList = cyberwareList.map {
+            if (it.id == implantId) {
+                logToConsole("NEURAL IMPLANT REMOVED: ${it.name}")
+                it.copy(isInstalled = false)
+            } else it
+        }
+        recalculatePlayerStats()
+    }
+
+    fun triggerOverclock() {
+        val hasSynapticMatrix = cyberwareList.any { it.id == "neural_synaptic_matrix" && it.isInstalled }
+        if (!hasSynapticMatrix) {
+            logToConsole("OVERCLOCK MATRIX: REQUIRES SYNAPTIC MATRIX IMPLANT")
+            return
+        }
+        if (overclockCooldown > 0f) {
+            logToConsole("OVERCLOCK MATRIX: COOLING DOWN (${overclockCooldown.toInt()}S)")
+            return
+        }
+        if (player.energy < 25f) {
+            logToConsole("OVERCLOCK MATRIX: INSUFFICIENT ENERGY (25 REQ)")
+            return
+        }
+        player = player.copy(energy = (player.energy - 25f).coerceAtLeast(0f))
+        isOverclockActive = true
+        overclockTimer = 10f
+        overclockCooldown = 25f
+        logToConsole("OVERCLOCK MATRIX ENGAGED: HYPER-REFLEX SPEED & 2X DAMAGE ACTIVE")
+        SoundManager.playSkillActivation("OVERCLOCK")
+    }
+
+    fun attemptDecryptDatashard(shardId: String, selectedSequence: List<String>): Boolean {
+        val shard = datashards.find { it.id == shardId } ?: return false
+        if (shard.isDecrypted) return true
+
+        if (selectedSequence == shard.hexSequenceTarget) {
+            datashards = datashards.map {
+                if (it.id == shardId) it.copy(isDecrypted = true) else it
+            }
+            player = player.copy(
+                credits = player.credits + shard.rewardCredits,
+                xp = player.xp + shard.rewardXp
+            )
+            currentScore += shard.rewardCredits * 2
+            logToConsole("DECRYPTION SUCCESSFUL: ${shard.title}")
+            logToConsole("REWARD CLAIMED: +${shard.rewardCredits}C | +${shard.rewardXp}XP")
+            return true
+        } else {
+            logToConsole("DECRYPTION FAILED: BUFFER MISMATCH")
+            return false
+        }
+    }
+
     fun equipItem(item: EquipmentItem) {
         var nextPlayer = when (item.type) {
             EquipmentType.WEAPON -> player.copy(equippedWeapon = item)
@@ -764,8 +937,8 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             else -> player.copy(equippedSystem = item)
         }
 
-        val totalHealthBoost = nextPlayer.equippedWeapon.statBoostHealth + nextPlayer.equippedCore.statBoostHealth + nextPlayer.equippedSystem.statBoostHealth
-        val totalEnergyBoost = nextPlayer.equippedWeapon.statBoostEnergy + nextPlayer.equippedCore.statBoostEnergy + nextPlayer.equippedSystem.statBoostEnergy
+        val totalHealthBoost = nextPlayer.equippedWeapon.statBoostHealth + nextPlayer.equippedCore.statBoostHealth + nextPlayer.equippedSystem.statBoostHealth + getCyberwareHealthBonus()
+        val totalEnergyBoost = nextPlayer.equippedWeapon.statBoostEnergy + nextPlayer.equippedCore.statBoostEnergy + nextPlayer.equippedSystem.statBoostEnergy + getCyberwareEnergyBonus()
 
         val newMaxHealth = 100f + totalHealthBoost
         val newMaxEnergy = 80f + totalEnergyBoost
