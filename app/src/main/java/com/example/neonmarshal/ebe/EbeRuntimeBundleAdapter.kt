@@ -34,12 +34,6 @@ class EbeRuntimeBundleAdapter(
         }
     }
 
-    /**
-     * A frozen runtime already contains EBE's assignment result.
-     *
-     * We therefore validate the staging boundary but intentionally do not perform
-     * a second locality expansion or infer knowledge locally.
-     */
     override fun assignLocalObservations() {
         staged.values.forEach { observation ->
             require(observation.observationId.isNotBlank()) {
@@ -52,49 +46,55 @@ class EbeRuntimeBundleAdapter(
     }
 
     override fun buildActionRequests(): List<SemanticActionRequest> {
-        val actionObjects = root.optJSONArray("action_requests")
+        val actionObjects = root.opt("action_requests")
+            ?.let(::jsonObjects)
             ?: root.optJSONObject("action_gateway")
-                ?.optJSONArray("requests")
-            ?: JSONArray()
+                ?.opt("requests")
+                ?.let(::jsonObjects)
+            ?: emptyList()
 
-        return buildList(actionObjects.length()) {
-            for (index in 0 until actionObjects.length()) {
-                val value = actionObjects.getJSONObject(index)
-                add(
-                    SemanticActionRequest(
-                        requestId = value.getString("id"),
-                        actorId = value.getString("actor_id"),
-                        action = value.getString("action_type"),
-                        targetId = value.optString("target_id").ifBlank { null },
-                        payloadJson = value.toString()
-                    )
-                )
-            }
+        return actionObjects.map { value ->
+            SemanticActionRequest(
+                requestId = value.getString("id"),
+                actorId = value.getString("actor_id"),
+                action = value.getString("action_type"),
+                targetId = value.optString("target_id").ifBlank { null },
+                payloadJson = value.toString()
+            )
         }
     }
 
-    fun availableObservations(): List<LocalObservation> {
-        val observations = root.optJSONArray("available_observations") ?: JSONArray()
+    fun availableObservations(): List<LocalObservation> =
+        root.opt("available_observations")
+            ?.let(::jsonObjects)
+            ?.map(::normalizeObservation)
+            ?: emptyList()
 
-        return buildList(observations.length()) {
-            for (index in 0 until observations.length()) {
-                val raw = observations.getJSONObject(index)
-                add(normalizeObservation(raw))
-            }
-        }
-    }
-
+    /**
+     * Snapshot format stores assigned observations inside each agent's memory.
+     * This method reads those explicit assignments without inferring any new ones.
+     */
     fun assignedObservations(): List<LocalObservation> {
-        val observations = root.optJSONArray("observations") ?: JSONArray()
+        val agents = root.optJSONObject("agents") ?: return emptyList()
+        val result = LinkedHashMap<String, LocalObservation>()
 
-        return buildList(observations.length()) {
-            for (index in 0 until observations.length()) {
-                val raw = observations.getJSONObject(index)
-                if (raw.optString("knowledge_state") == "assigned_as_evidence") {
-                    add(normalizeObservation(raw))
+        for (agentId in agents.keys()) {
+            val agent = agents.optJSONObject(agentId) ?: continue
+            val entries = agent.optJSONObject("memory")
+                ?.opt("entries")
+                ?.let(::jsonObjects)
+                ?: emptyList()
+
+            for (entry in entries) {
+                val observation = entry.optJSONObject("observation") ?: continue
+                if (observation.optString("knowledge_state") == "assigned_as_evidence") {
+                    val normalized = normalizeObservation(observation)
+                    result.putIfAbsent(normalized.observationId, normalized)
                 }
             }
         }
+
+        return result.values.toList()
     }
 
     fun runtimeVersion(): String =
@@ -117,8 +117,27 @@ class EbeRuntimeBundleAdapter(
             eventId = raw.optString("source_event_id").ifBlank {
                 raw.optString("event_id")
             },
-            kind = raw.optString("subject_type", raw.optString("evidence", "observation")),
+            kind = raw.optString(
+                "subject_type",
+                raw.optString("evidence", "observation")
+            ),
             payloadJson = raw.toString()
         )
+    }
+
+    private fun jsonObjects(value: Any): List<JSONObject> = when (value) {
+        is JSONArray -> buildList(value.length()) {
+            for (index in 0 until value.length()) {
+                add(value.getJSONObject(index))
+            }
+        }
+
+        is JSONObject -> buildList {
+            for (key in value.keys()) {
+                value.optJSONObject(key)?.let(::add)
+            }
+        }
+
+        else -> emptyList()
     }
 }
