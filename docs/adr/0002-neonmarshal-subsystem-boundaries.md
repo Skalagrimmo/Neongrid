@@ -103,3 +103,33 @@ Narrative decoration and broad content generation are explicitly deferred until 
 - NanoMarshal can be integrated incrementally instead of replacing the current GameViewModel in one step.
 - PixelGen/EBE/FPE can remain outside the Android runtime process initially and communicate through versioned serialized contracts.
 - Future in-process integration can replace adapters without changing ownership semantics.
+
+
+## Current adapter layer
+
+The foundation branch now exposes narrow Android-side boundaries:
+
+| Boundary | Android adapter | Role |
+| --- | --- | --- |
+| PixelGen authority | `pixelgen/PixelGenFrozenBundleAdapter` | Read-only semantic world + ordered derived events |
+| EBE runtime | `ebe/EbeRuntimeBundleAdapter` | Import/replay EBE observations and action requests |
+| NanoMarshal | `nanomarshal/NanoMarshalRuntimeAdapter` | Lifecycle boundary around an injected tactical facade |
+| FPE | `fpe/FpeProjectionAdapter` | Read-only projection identity/integrity boundary |
+
+The NanoMarshal and FPE adapters intentionally use injected facades. This keeps the Android module independent from implementation-specific runtime types and allows the external stable runtimes to remain separate until an explicit binding is introduced.
+
+The EBE adapter is currently a bundle/snapshot adapter, not a full in-process cognition engine. It does not synthesize knowledge or expand locality; those semantics remain owned by EBE.
+
+The PixelGen adapter is currently a frozen-bundle authority adapter. Before production use, its assumed public-bundle artifact names should be reconciled against an actual `write_public_bundle` output.
+
+## Validation status
+
+The adapter layer has JVM unit coverage for:
+
+- coordinator ordering and mutation-domain routing;
+- PixelGen bundle identity/event ordering;
+- EBE snapshot observation assignment and action-request import;
+- NanoMarshal facade lifecycle and session identity;
+- FPE projection world identity/revision/fingerprint checks.
+
+A full Gradle/Android test run remains an environment-level gate and is not represented as passing by this ADR.
