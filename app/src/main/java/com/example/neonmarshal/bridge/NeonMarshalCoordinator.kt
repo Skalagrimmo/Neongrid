@@ -66,7 +66,9 @@ class NeonMarshalCoordinator(
 
         val actionRequests = epistemic.buildActionRequests()
         worldMutation?.let { mutation ->
-            actionRequests.forEach { mutation.applyAction(it) }
+            actionRequests
+                .filter { it.payloadJson.contains(""domain":"pixelgen_world_event"") }
+                .forEach { mutation.applyAction(it) }
         }
 
         tactical.step(deltaMs)
