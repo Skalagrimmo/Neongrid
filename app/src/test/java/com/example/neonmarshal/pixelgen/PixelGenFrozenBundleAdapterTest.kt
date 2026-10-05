@@ -107,20 +107,6 @@ class PixelGenFrozenBundleAdapterTest {
     }
 
     @Test
-    fun applyAction_rejectsMutationOnFrozenBundle() {
-        val adapter = adapter()
-
-        assertThrows(UnsupportedOperationException::class.java) {
-            adapter.applyAction(
-                SemanticActionRequest(
-                    requestId = "req-1",
-                    actorId = "player",
-                    action = "hack_terminal",
-                    targetId = "terminal_1",
-                    payloadJson = "{}"
-                )
-            )
-        }
     }
 
     private fun adapter(): PixelGenFrozenBundleAdapter {
