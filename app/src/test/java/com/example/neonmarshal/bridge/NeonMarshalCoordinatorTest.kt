@@ -48,6 +48,7 @@ class NeonMarshalCoordinatorTest {
                 return listOf(
                     SemanticActionRequest(
                         requestId = "request-1",
+                        domain = "agent_intent",
                         actorId = "mara",
                         action = "avoid_front",
                         targetId = "front_0",
