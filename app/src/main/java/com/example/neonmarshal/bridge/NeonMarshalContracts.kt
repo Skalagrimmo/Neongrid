@@ -55,7 +55,13 @@ interface WorldAuthorityAdapter {
         worldId: String,
         sinceRevision: Long? = null
     ): List<SemanticWorldEvent>
+}
 
+/**
+ * Optional mutation capability. A read-only PixelGen bundle adapter does not
+ * implement this interface. A real authority transport can implement it later.
+ */
+interface WorldMutationAdapter {
     fun applyAction(request: SemanticActionRequest): List<SemanticWorldEvent>
 }
 
