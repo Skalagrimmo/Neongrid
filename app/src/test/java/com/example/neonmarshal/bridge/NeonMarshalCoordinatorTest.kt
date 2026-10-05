@@ -131,4 +131,82 @@ class NeonMarshalCoordinatorTest {
         assertEquals("success", result.outcome)
         assertEquals("campaign.commit", calls.last())
     }
+
+    @Test
+    fun step_onlySendsPixelGenWorldEventsToMutationAdapter() {
+        val applied = mutableListOf<String>()
+
+        val world = object : WorldAuthorityAdapter {
+            override fun loadWorld(worldId: String, revision: Long?): SemanticWorldRef =
+                SemanticWorldRef(worldId, 0L, "fp")
+
+            override fun pollEvents(
+                worldId: String,
+                sinceRevision: Long?
+            ): List<SemanticWorldEvent> = emptyList()
+        }
+
+        val epistemic = object : EpistemicAdapter {
+            override fun stageObservations(observations: List<LocalObservation>) = Unit
+            override fun assignLocalObservations() = Unit
+
+            override fun buildActionRequests(): List<SemanticActionRequest> =
+                listOf(
+                    SemanticActionRequest(
+                        requestId = "intent-1",
+                        domain = "agent_intent",
+                        actorId = "mara",
+                        action = "avoid_front",
+                        targetId = "front_0",
+                        payloadJson = "{}"
+                    ),
+                    SemanticActionRequest(
+                        requestId = "world-1",
+                        domain = "pixelgen_world_event",
+                        actorId = "mara",
+                        action = "front_deescalation",
+                        targetId = "front_0",
+                        payloadJson = "{}"
+                    )
+                )
+        }
+
+        val tactical = object : TacticalRuntimeAdapter {
+            override fun startSession(sessionId: String, world: SemanticWorldRef) = Unit
+            override fun step(deltaMs: Long) = Unit
+            override fun finishSession(): TacticalSessionResult =
+                TacticalSessionResult("session", 0L, "success")
+        }
+
+        val projection = object : ProjectionAdapter {
+            override fun project(world: SemanticWorldRef): ProjectionHandle =
+                ProjectionHandle(world.worldId, world.revision, world.fingerprint)
+        }
+
+        val campaign = object : CampaignStateSink {
+            override fun commitResult(result: TacticalSessionResult) = Unit
+        }
+
+        val mutation = object : WorldMutationAdapter {
+            override fun applyAction(request: SemanticActionRequest): List<SemanticWorldEvent> {
+                applied += request.requestId
+                return emptyList()
+            }
+        }
+
+        val coordinator = NeonMarshalCoordinator(
+            worldAuthority = world,
+            epistemic = epistemic,
+            tactical = tactical,
+            projection = projection,
+            campaignState = campaign,
+            worldMutation = mutation
+        )
+
+        coordinator.start("session", "fp")
+        coordinator.step(1L)
+
+        assertEquals(listOf("world-1"), applied)
+    }
+
 }
