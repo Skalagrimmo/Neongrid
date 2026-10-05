@@ -11,7 +11,8 @@ class NeonMarshalCoordinator(
     private val epistemic: EpistemicAdapter,
     private val tactical: TacticalRuntimeAdapter,
     private val projection: ProjectionAdapter,
-    private val campaignState: CampaignStateSink
+    private val campaignState: CampaignStateSink,
+    private val worldMutation: WorldMutationAdapter? = null
 ) {
     private var world: SemanticWorldRef? = null
     private var lastKnownRevision: Long? = null
@@ -38,6 +39,10 @@ class NeonMarshalCoordinator(
      *
      * Observations are supplied after they have been normalized by the PixelGen
      * adapter. EBE is responsible for deciding who actually receives them.
+     *
+     * Action requests are only committed when an explicit mutation adapter has
+     * been installed. Without one, requests are returned to the caller and are
+     * never silently treated as applied world state.
      */
     fun step(
         deltaMs: Long,
@@ -60,7 +65,9 @@ class NeonMarshalCoordinator(
         }
 
         val actionRequests = epistemic.buildActionRequests()
-        actionRequests.forEach { worldAuthority.applyAction(it) }
+        worldMutation?.let { mutation ->
+            actionRequests.forEach { mutation.applyAction(it) }
+        }
 
         tactical.step(deltaMs)
         return actionRequests
