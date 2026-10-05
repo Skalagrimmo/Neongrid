@@ -10,8 +10,8 @@ class EbeRuntimeBundleAdapterTest {
         {
           "version": "1.0.0",
           "tick": 5,
-          "available_observations": [
-            {
+          "available_observations": {
+            "observation_1_0": {
               "id": "observation_1_0",
               "source_event_id": "derived_event_1",
               "subject_type": "front",
@@ -20,18 +20,26 @@ class EbeRuntimeBundleAdapterTest {
               "sector": [0, 2],
               "revision": 1
             }
-          ],
-          "observations": [
-            {
-              "id": "observation_1_0",
-              "source_event_id": "derived_event_1",
-              "subject_type": "front",
-              "evidence": "direct_local",
-              "knowledge_state": "assigned_as_evidence",
-              "sector": [0, 2],
-              "revision": 1
+          },
+          "agents": {
+            "mara": {
+              "memory": {
+                "entries": {
+                  "observation_1_0": {
+                    "observation": {
+                      "id": "observation_1_0",
+                      "source_event_id": "derived_event_1",
+                      "subject_type": "front",
+                      "evidence": "direct_local",
+                      "knowledge_state": "assigned_as_evidence",
+                      "sector": [0, 2],
+                      "revision": 1
+                    }
+                  }
+                }
+              }
             }
-          ],
+          },
           "action_gateway": {
             "requests": [
               {
