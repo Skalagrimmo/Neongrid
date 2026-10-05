@@ -89,20 +89,6 @@ class PixelGenFrozenBundleAdapter(
         }.sortedBy { it.revision }
     }
 
-    /**
-     * The frozen bundle is intentionally read-only.
-     *
-     * PixelGen write-back will be introduced through a separate authenticated
-     * authority transport rather than mutating a local Android copy.
-     */
-    override fun applyAction(
-        request: SemanticActionRequest
-    ): List<SemanticWorldEvent> {
-        throw UnsupportedOperationException(
-            "PixelGen frozen bundles are read-only; action ${request.requestId} requires a WorldMutationAdapter"
-        )
-    }
-
     private fun parseManifest(json: String): Manifest {
         val root = JSONObject(json)
         val artifactsJson = root.optJSONArray("artifacts") ?: JSONArray()
