@@ -1,6 +1,5 @@
 package com.example.neonmarshal.pixelgen
 
-import com.example.neonmarshal.bridge.SemanticActionRequest
 import com.example.neonmarshal.bridge.SemanticWorldEvent
 import com.example.neonmarshal.bridge.SemanticWorldRef
 import com.example.neonmarshal.bridge.WorldAuthorityAdapter
