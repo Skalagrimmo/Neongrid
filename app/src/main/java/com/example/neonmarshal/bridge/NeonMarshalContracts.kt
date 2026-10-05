@@ -33,6 +33,7 @@ data class SemanticWorldEvent(
 
 data class SemanticActionRequest(
     val requestId: String,
+    val domain: String,
     val actorId: String,
     val action: String,
     val targetId: String?,
