@@ -106,8 +106,6 @@ class PixelGenFrozenBundleAdapterTest {
         assertTrue(events.first().payloadJson.contains("\"subject_id\":\"territory_0\""))
     }
 
-    @Test
-    }
 
     private fun adapter(): PixelGenFrozenBundleAdapter {
         return PixelGenFrozenBundleAdapter(
