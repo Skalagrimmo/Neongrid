@@ -1,5 +1,6 @@
 package com.example.render
 
+import android.content.res.AssetManager
 import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import androidx.compose.ui.geometry.Offset
@@ -11,9 +12,10 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-class GlIsoRenderer : GLSurfaceView.Renderer {
+class GlIsoRenderer(private val assetManager: AssetManager) : GLSurfaceView.Renderer {
 
     private val batch = GlBatchRenderer()
+    private val spriteBatch = GlSpriteBatchRenderer(assetManager)
 
     var screenWidth = 1
     var screenHeight = 1
@@ -26,6 +28,7 @@ class GlIsoRenderer : GLSurfaceView.Renderer {
     var renderPlayerX = 0f
     var renderPlayerY = 0f
     var enemies = emptyList<Enemy>()
+    var civilians = emptyList<CivilianNpc>()
     var enemyRenderPosMap = mapOf<String, Offset>()
     var noiseRipples = emptyList<NoiseRipple>()
     var projectiles = emptyList<Pair<Point3D, Point3D>>()
@@ -48,12 +51,14 @@ class GlIsoRenderer : GLSurfaceView.Renderer {
             1.0f
         )
         batch.initGL()
+        spriteBatch.initGL()
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         screenWidth = width.coerceAtLeast(1)
         screenHeight = height.coerceAtLeast(1)
         batch.setScreenSize(screenWidth, screenHeight)
+        spriteBatch.setScreenSize(screenWidth, screenHeight)
     }
 
     override fun onDrawFrame(gl: GL10?) {
@@ -174,6 +179,14 @@ class GlIsoRenderer : GLSurfaceView.Renderer {
             }
         }
 
+        val civiliansByDepth = mutableMapOf<Int, MutableList<CivilianNpc>>()
+        for (civilian in civilians) {
+            if (!civilian.isActive || civilian.pos.z.toInt() != currentZLevel) continue
+            val cx = kotlin.math.round(civilian.pos.x).toInt()
+            val cy = kotlin.math.round(civilian.pos.y).toInt()
+            civiliansByDepth.getOrPut(cx + cy) { mutableListOf() }.add(civilian)
+        }
+
         val wallHeight = 40f
 
         for (sum in 0 until (map.width + map.height)) {
@@ -280,6 +293,43 @@ class GlIsoRenderer : GLSurfaceView.Renderer {
                             batch.drawLine(playerIso.x, playerIso.y - 16f, playerIso.x + arrowIsoX, playerIso.y - 16f + arrowIsoY, palette.terminalColor.copy(alpha = baseAlpha), 3f)
                         }
                     }
+                }
+            }
+
+            civiliansByDepth[sum]?.let { depthCivilians ->
+                if (depthCivilians.isNotEmpty()) {
+                    depthCivilians.forEach { civilian ->
+                        val civilianIso = toIso(civilian.pos.x, civilian.pos.y, civilian.pos.z)
+                        if (isVisibleOnScreen(civilianIso, 110f)) {
+                            batch.drawCircle(
+                                civilianIso.x,
+                                civilianIso.y + 4f,
+                                if (civilian.activity == CivilianActivity.VENDOR) 22f else 11f,
+                                palette.gridOutline.copy(alpha = 0.42f),
+                                12,
+                                true
+                            )
+                        }
+                    }
+
+                    batch.flush()
+                    spriteBatch.begin()
+                    depthCivilians.forEach { civilian ->
+                        val civilianIso = toIso(civilian.pos.x, civilian.pos.y, civilian.pos.z)
+                        if (!isVisibleOnScreen(civilianIso, 110f)) return@forEach
+                        val isVendor = civilian.activity == CivilianActivity.VENDOR
+                        val spriteHeight = if (isVendor) 88f else 80f
+                        val spriteWidth = if (isVendor) 90f else 58f
+                        spriteBatch.drawSprite(
+                            centerX = civilianIso.x,
+                            bottomY = civilianIso.y + 6f,
+                            width = spriteWidth,
+                            height = spriteHeight,
+                            frameIndex = PedestrianSpriteAtlas.frameFor(civilian),
+                            flipX = civilian.facingX < 0f
+                        )
+                    }
+                    spriteBatch.flush()
                 }
             }
         }

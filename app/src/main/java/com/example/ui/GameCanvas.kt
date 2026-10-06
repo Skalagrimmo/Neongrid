@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.model.*
 import com.example.render.GlIsoRenderer
@@ -21,6 +22,7 @@ fun GameCanvas(
 ) {
     val player = viewModel.player
     val enemies = viewModel.enemies
+    val civilians = viewModel.civilians
     val levelMap = viewModel.gameLevels[viewModel.currentZLevel]
     val noiseRipples = viewModel.noiseRipples
     val projectiles = viewModel.activeProjectiles
@@ -61,7 +63,8 @@ fun GameCanvas(
 
     val enemyRenderPosMap = remember { mutableStateMapOf<String, Offset>() }
 
-    val glRenderer = remember { GlIsoRenderer() }
+    val context = LocalContext.current
+    val glRenderer = remember(context) { GlIsoRenderer(context.assets) }
 
     LaunchedEffect(player.pos.x, player.pos.y, viewModel.currentZLevel, viewModel.gbcGraphicsSettings) {
         var lastNanos = System.nanoTime()
@@ -115,6 +118,7 @@ fun GameCanvas(
                 glRenderer.renderPlayerX = renderPlayerX
                 glRenderer.renderPlayerY = renderPlayerY
                 glRenderer.enemies = enemies
+                glRenderer.civilians = civilians
                 glRenderer.enemyRenderPosMap = enemyRenderPosMap
                 glRenderer.noiseRipples = noiseRipples
                 glRenderer.projectiles = projectiles

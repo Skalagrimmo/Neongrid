@@ -12,6 +12,7 @@ import com.example.data.CustomLoadoutDefaults
 import com.example.data.GameDatabase
 import com.example.data.GameRepository
 import com.example.data.PlayerSaveStateMapper
+import com.example.engine.CivilianNpcSystem
 import com.example.engine.CombatSystem
 import com.example.engine.LevelManager
 import com.example.engine.MovementSystem
@@ -51,6 +52,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     val movementSystem = MovementSystem(levelManager)
     val stealthAiSystem = StealthAiSystem()
     val combatSystem = CombatSystem(levelManager)
+    val civilianNpcSystem = CivilianNpcSystem(levelManager)
 
     // Game Screens State
     enum class Screen {
@@ -136,6 +138,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     private var lastExploredZ = -1
 
     val enemies = mutableStateListOf<Enemy>()
+    val civilians = mutableStateListOf<CivilianNpc>()
 
     val noiseRipples = mutableStateListOf<NoiseRipple>()
 
@@ -357,6 +360,7 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         currentScore = 0
         isHackingActive = false
         enemies.clear()
+        civilians.clear()
         noiseRipples.clear()
         activeProjectiles.clear()
         levelManager.generateLevels()
@@ -368,7 +372,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         player.maxEnergy = 80f + player.equippedCore.statBoostEnergy
 
         spawnEnemiesForLevel()
+        civilians.addAll(civilianNpcSystem.spawnMainStreet())
         logToConsole("ENTITIES REPOPULATED ON GRID")
+        logToConsole("CIVILIAN STREET POPULATION ONLINE: ${civilians.size}")
     }
 
     private fun spawnEnemiesForLevel() {
@@ -450,6 +456,9 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun updateGameEntities(dt: Float) {
         if (isGameOver || isGameWon) return
+
+        // 0. Ambient civilian simulation (presentation-only population layer)
+        civilianNpcSystem.update(civilians, dt)
 
         // 1. Process Active Projectiles
         val processedProjectiles = combatSystem.processProjectiles(activeProjectiles, enemies, player, currentZLevel, dt)

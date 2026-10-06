@@ -169,6 +169,9 @@ class GlBatchRenderer {
     fun flush() {
         if (currentIndexCount == 0) return
 
+        // Restore the primitive shader after any interleaved textured sprite pass.
+        GLES30.glUseProgram(program)
+
         vertexByteBuffer.flip()
         indexShortBuffer.flip()
 
