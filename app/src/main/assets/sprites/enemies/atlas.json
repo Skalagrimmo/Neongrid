@@ -1,0 +1,51 @@
+{
+  "format": "reference-profile-manifest",
+  "importStatus": "reference_only",
+  "note": "Enemy source sheets are registered semantically but are not present as production-ready transparent atlases in the current working tree.",
+  "profiles": {
+    "heavy_elite": {
+      "sourceSheetId": "legacy_enemy_heavy_elite",
+      "animations": [
+        "idle",
+        "walk",
+        "context_action",
+        "hurt",
+        "death",
+        "fall"
+      ]
+    },
+    "sewer_mutant": {
+      "sourceSheetId": "legacy_enemy_sewer_mutant",
+      "animations": [
+        "idle",
+        "walk",
+        "context_action",
+        "hurt",
+        "death",
+        "fall"
+      ]
+    },
+    "stalker_beast": {
+      "sourceSheetId": "legacy_enemy_stalker_beast",
+      "animations": [
+        "idle",
+        "walk",
+        "context_action",
+        "hurt",
+        "death",
+        "fall"
+      ]
+    },
+    "hooded_operator": {
+      "sourceSheetId": "legacy_enemy_hooded_operator",
+      "animations": [
+        "idle",
+        "walk",
+        "context_action",
+        "hurt",
+        "death",
+        "fall"
+      ]
+    }
+  }
+}

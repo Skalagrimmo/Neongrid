@@ -229,7 +229,8 @@ class GlIsoRenderer(private val assetManager: AssetManager) : GLSurfaceView.Rend
                                 AlertState.SUSPICIOUS -> palette.enemySuspicious
                                 AlertState.ALERTED -> palette.enemyAlert
                             }
-                            val radius = if (enemy.type == "Boss") 20f else 12f
+                            val presentation = EnemySpritePresentationResolver.resolve(enemy)
+                            val radius = presentation.fallbackRadius
 
                             batch.drawCircle(enemyIso.x, enemyIso.y - 14f, radius, enemyColor, 16, true)
                             batch.drawCircle(enemyIso.x, enemyIso.y - 14f, radius, palette.gridOutline, 16, false, 2f)
