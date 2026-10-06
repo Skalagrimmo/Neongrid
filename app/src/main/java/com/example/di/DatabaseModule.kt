@@ -2,6 +2,7 @@ package com.example.di
 
 import android.content.Context
 import com.example.data.*
+import com.example.neonmarshal.RoomNeonMarshalCampaignRepository
 
 /**
  * Dependency Injection container and provider module for Room Databases and DAOs.
@@ -63,6 +64,10 @@ class AppContainer(private val context: Context) {
 
     val dataRepository: DataRepository by lazy {
         DataRepository(characterDao, inventoryDao, skillDao, playerSaveStateDao, statusEffectDao, unlockedSkillDao)
+    }
+
+    val neonMarshalCampaignRepository: RoomNeonMarshalCampaignRepository by lazy {
+        RoomNeonMarshalCampaignRepository(appDatabase)
     }
 }
 

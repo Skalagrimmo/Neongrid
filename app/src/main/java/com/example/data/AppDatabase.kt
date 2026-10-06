@@ -2,6 +2,8 @@ package com.example.data
 
 import android.content.Context
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -75,7 +77,7 @@ interface StatusEffectDao {
         PlayerSaveState::class,
         CharacterStatusEffectEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -89,6 +91,27 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun unlockedSkillDao(): UnlockedSkillDao
 
     companion object {
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS neonmarshal_session_results (
+                        sessionId TEXT NOT NULL,
+                        worldRevision INTEGER NOT NULL,
+                        outcome TEXT NOT NULL,
+                        emittedEventsJson TEXT NOT NULL,
+                        rewardCredits INTEGER NOT NULL,
+                        rewardXp INTEGER NOT NULL,
+                        savedAt INTEGER NOT NULL,
+                        PRIMARY KEY(sessionId)
+                    )
+                """.trimIndent())
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_neonmarshal_session_results_savedAt " +
+                        "ON neonmarshal_session_results(savedAt)"
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -101,6 +124,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "app_database"
                 )
+                .addMigrations(MIGRATION_8_9)
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
                 INSTANCE = instance

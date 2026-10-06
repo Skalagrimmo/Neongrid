@@ -56,6 +56,7 @@ class EbeRuntimeBundleAdapter(
         return actionObjects.map { value ->
             SemanticActionRequest(
                 requestId = value.getString("id"),
+                domain = value.optString("domain", "agent_intent"),
                 actorId = value.getString("actor_id"),
                 action = value.getString("action_type"),
                 targetId = value.optString("target_id").ifBlank { null },
