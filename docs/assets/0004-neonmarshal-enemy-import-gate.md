@@ -1,14 +1,7 @@
 # Enemy sprite import gate
 
-The enemy presentation contract is now wired, but the four original binary sheets are not present in the active working tree.
+**Superseded by:** `0005-neonmarshal-enemy-production-import.md`.
 
-Required source sheets:
+The original gate was created before the four enemy reference sheets were supplied. The source sheets are now processed into transparent WebP atlases; the remaining step is placing those binary atlases into `app/src/main/assets/sprites/enemies/`.
 
-- heavy_elite
-- sewer_mutant
-- stalker_beast
-- hooded_operator
-
-Until those source images are available, NeonMarshal deliberately keeps the existing OpenGL primitive enemy fallback. This avoids fabricating art and keeps the NanoMarshal AI/gameplay layer independent from asset availability.
-
-Once the sheets are supplied, the importer should crop transparent frames, preserve nearest-neighbor sampling, record frame indices in `app/src/main/assets/sprites/enemies/atlas.json`, and set `EnemySpriteAtlas.isProductionReady()` to true only after the atlas validation test passes.
+The runtime still probes AssetManager at surface creation, so the application remains safe when the binary files are absent and automatically enables the sprite path when all four are present.

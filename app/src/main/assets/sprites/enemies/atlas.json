@@ -1,51 +1,70 @@
 {
-  "format": "reference-profile-manifest",
-  "importStatus": "reference_only",
-  "note": "Enemy source sheets are registered semantically but are not present as production-ready transparent atlases in the current working tree.",
+  "format": "neonmarshal-enemy-atlas-v1",
+  "cellWidth": 224,
+  "cellHeight": 176,
+  "columns": 6,
+  "rows": 6,
+  "source": "user-supplied labelled enemy sheets",
   "profiles": {
     "heavy_elite": {
-      "sourceSheetId": "legacy_enemy_heavy_elite",
-      "animations": [
-        "idle",
-        "walk",
-        "context_action",
-        "hurt",
-        "death",
-        "fall"
-      ]
+      "image": "heavy_elite_atlas.webp",
+      "frameCount": 34,
+      "clips": {
+        "idle": [0, 1, 2, 3],
+        "walk_east": [4, 5, 6, 7],
+        "walk": [4, 5, 6, 7],
+        "attack1": [18, 19, 20],
+        "attack2": [21, 22, 23, 24],
+        "context_action": [25, 26, 27, 28, 29, 30],
+        "hurt": [31],
+        "death": [32],
+        "fall": [33]
+      }
     },
     "sewer_mutant": {
-      "sourceSheetId": "legacy_enemy_sewer_mutant",
-      "animations": [
-        "idle",
-        "walk",
-        "context_action",
-        "hurt",
-        "death",
-        "fall"
-      ]
+      "image": "sewer_mutant_atlas.webp",
+      "frameCount": 33,
+      "clips": {
+        "idle": [0, 1, 2, 3],
+        "walk_east": [4, 5, 6, 7],
+        "walk": [4, 5, 6, 7],
+        "attack1": [18, 19, 20],
+        "attack2": [21, 22, 23],
+        "context_action": [24, 25, 26, 27, 28, 29],
+        "hurt": [30],
+        "death": [31],
+        "fall": [32]
+      }
     },
     "stalker_beast": {
-      "sourceSheetId": "legacy_enemy_stalker_beast",
-      "animations": [
-        "idle",
-        "walk",
-        "context_action",
-        "hurt",
-        "death",
-        "fall"
-      ]
+      "image": "stalker_beast_atlas.webp",
+      "frameCount": 32,
+      "clips": {
+        "idle": [0, 1, 2, 3],
+        "walk_east": [4, 5, 6, 7],
+        "walk": [4, 5, 6, 7],
+        "attack1": [18, 19, 20],
+        "attack2": [21, 22, 23],
+        "context_action": [24, 25, 26, 27, 28],
+        "hurt": [29],
+        "death": [30],
+        "fall": [31]
+      }
     },
     "hooded_operator": {
-      "sourceSheetId": "legacy_enemy_hooded_operator",
-      "animations": [
-        "idle",
-        "walk",
-        "context_action",
-        "hurt",
-        "death",
-        "fall"
-      ]
+      "image": "hooded_operator_atlas.webp",
+      "frameCount": 34,
+      "clips": {
+        "idle": [0, 1, 2, 3],
+        "walk_east": [4, 5, 6, 7],
+        "walk": [4, 5, 6, 7],
+        "attack1": [18, 19, 20],
+        "attack2": [21, 22, 23],
+        "context_action": [24, 25, 26, 27, 28, 29, 30],
+        "hurt": [31],
+        "death": [32],
+        "fall": [33]
+      }
     }
   }
 }

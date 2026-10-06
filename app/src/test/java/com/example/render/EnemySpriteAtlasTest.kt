@@ -4,7 +4,7 @@ import com.example.model.Enemy
 import com.example.model.Point3D
 import com.example.model.SpriteAnimation
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EnemySpriteAtlasTest {
@@ -30,7 +30,11 @@ class EnemySpriteAtlasTest {
     }
 
     @Test
-    fun currentBuildDoesNotClaimMissingProductionAtlas() {
-        assertFalse(EnemySpriteAtlas.isProductionReady())
+    fun productionAtlasLayoutIsConsistent() {
+        assertEquals(6, EnemySpriteAtlas.columns)
+        assertEquals(6, EnemySpriteAtlas.rows)
+        assertEquals(224, EnemySpriteAtlas.cellWidth)
+        assertEquals(176, EnemySpriteAtlas.cellHeight)
+        assertTrue(EnemySpriteAtlas.assetPathFor("heavy_elite")!!.endsWith("heavy_elite_atlas.webp"))
     }
 }

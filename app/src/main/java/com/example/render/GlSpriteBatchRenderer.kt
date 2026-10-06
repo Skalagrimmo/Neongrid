@@ -9,10 +9,17 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Small OpenGL ES 3.0 textured batch kept separate from GlBatchRenderer so the
- * existing low-spec primitive renderer remains unchanged.
+ * Small OpenGL ES 3.0 textured batch for pixel-art atlases.
+ *
+ * The same implementation serves civilian and enemy presentation layers;
+ * gameplay systems never depend on this renderer.
  */
-class GlSpriteBatchRenderer(private val assets: AssetManager) {
+class GlSpriteBatchRenderer(
+    private val assets: AssetManager,
+    private val assetPath: String = "sprites/pedestrians/pedestrians_atlas.webp",
+    private val columns: Int = PedestrianSpriteAtlas.columns,
+    private val rows: Int = PedestrianSpriteAtlas.rows
+) {
 
     private val vertexShaderCode = """
         #version 300 es
@@ -100,9 +107,9 @@ class GlSpriteBatchRenderer(private val assets: AssetManager) {
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
 
         val options = BitmapFactory.Options().apply { inScaled = false }
-        assets.open("sprites/pedestrians/pedestrians_atlas.webp").use {
+        assets.open(assetPath).use {
             val bitmap = BitmapFactory.decodeStream(it, null, options)
-                ?: error("Unable to decode pedestrian sprite atlas")
+                ?: error("Unable to decode sprite atlas: $assetPath")
             GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bitmap, 0)
             bitmap.recycle()
         }
@@ -139,12 +146,13 @@ class GlSpriteBatchRenderer(private val assets: AssetManager) {
     ) {
         if (vertexCount + 6 > maxVertices) flush()
 
-        val col = frameIndex.mod(PedestrianSpriteAtlas.columns)
-        val row = frameIndex / PedestrianSpriteAtlas.columns
-        val u0 = col.toFloat() / PedestrianSpriteAtlas.columns
-        val u1 = (col + 1).toFloat() / PedestrianSpriteAtlas.columns
-        val v0 = 1f - (row + 1).toFloat() / PedestrianSpriteAtlas.rows
-        val v1 = 1f - row.toFloat() / PedestrianSpriteAtlas.rows
+        val safeFrame = frameIndex.mod(columns * rows)
+        val col = safeFrame % columns
+        val row = safeFrame / columns
+        val u0 = col.toFloat() / columns
+        val u1 = (col + 1).toFloat() / columns
+        val v0 = 1f - (row + 1).toFloat() / rows
+        val v1 = 1f - row.toFloat() / rows
 
         val left = centerX - width / 2f
         val right = centerX + width / 2f
@@ -175,7 +183,12 @@ class GlSpriteBatchRenderer(private val assets: AssetManager) {
         if (vertexCount == 0) return
         buffer.flip()
         GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vboId)
-        GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, vertexCount * floatsPerVertex * 4, buffer)
+        GLES30.glBufferSubData(
+            GLES30.GL_ARRAY_BUFFER,
+            0,
+            vertexCount * floatsPerVertex * 4,
+            buffer
+        )
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, vertexCount)
         buffer.clear()
         vertexCount = 0

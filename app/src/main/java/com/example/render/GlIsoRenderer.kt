@@ -16,6 +16,15 @@ class GlIsoRenderer(private val assetManager: AssetManager) : GLSurfaceView.Rend
 
     private val batch = GlBatchRenderer()
     private val spriteBatch = GlSpriteBatchRenderer(assetManager)
+    private val enemySpriteBatches = EnemySpriteAtlas.profileIds().associateWith { profileId ->
+        GlSpriteBatchRenderer(
+            assets = assetManager,
+            assetPath = EnemySpriteAtlas.assetPathFor(profileId)!!,
+            columns = EnemySpriteAtlas.columns,
+            rows = EnemySpriteAtlas.rows
+        )
+    }
+    private var enemySpritesAvailable = false
 
     var screenWidth = 1
     var screenHeight = 1
@@ -52,6 +61,10 @@ class GlIsoRenderer(private val assetManager: AssetManager) : GLSurfaceView.Rend
         )
         batch.initGL()
         spriteBatch.initGL()
+        enemySpritesAvailable = EnemySpriteAtlas.areAssetsAvailable(assetManager)
+        if (enemySpritesAvailable) {
+            enemySpriteBatches.values.forEach { it.initGL() }
+        }
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
@@ -59,6 +72,9 @@ class GlIsoRenderer(private val assetManager: AssetManager) : GLSurfaceView.Rend
         screenHeight = height.coerceAtLeast(1)
         batch.setScreenSize(screenWidth, screenHeight)
         spriteBatch.setScreenSize(screenWidth, screenHeight)
+        if (enemySpritesAvailable) {
+            enemySpriteBatches.values.forEach { it.setScreenSize(screenWidth, screenHeight) }
+        }
     }
 
     override fun onDrawFrame(gl: GL10?) {
@@ -88,6 +104,16 @@ class GlIsoRenderer(private val assetManager: AssetManager) : GLSurfaceView.Rend
             return isoPt.x >= -margin && isoPt.x <= screenWidth + margin &&
                    isoPt.y >= -margin && isoPt.y <= screenHeight + margin
         }
+
+        fun resumePrimitiveBatch() {
+            batch.beginBatch(
+                enableScanlines = gbcSettings.isScanlinesEnabled,
+                enableCelShading = gbcSettings.isCelShadingEnabled && gbcSettings.celShadingSettings.isEnabled,
+                celBands = gbcSettings.celShadingSettings.bands.toFloat()
+            )
+        }
+
+        val enemyAnimationClock = System.nanoTime() / 1_000_000_000f
 
         val map = levelMap ?: return
         val exp = exploredArray
@@ -223,7 +249,7 @@ class GlIsoRenderer(private val assetManager: AssetManager) : GLSurfaceView.Rend
                             // Enemy Shadow
                             batch.drawCircle(enemyIso.x, enemyIso.y + 4f, 14f, palette.gridOutline.copy(alpha = 0.5f), 16, true)
 
-                            // Enemy Body
+                            // Enemy Body / Sprite
                             val enemyColor = when (enemy.alertState) {
                                 AlertState.PATROLLING -> palette.enemyPatrol
                                 AlertState.SUSPICIOUS -> palette.enemySuspicious
@@ -232,13 +258,31 @@ class GlIsoRenderer(private val assetManager: AssetManager) : GLSurfaceView.Rend
                             val presentation = EnemySpritePresentationResolver.resolve(enemy)
                             val radius = presentation.fallbackRadius
 
-                            batch.drawCircle(enemyIso.x, enemyIso.y - 14f, radius, enemyColor, 16, true)
-                            batch.drawCircle(enemyIso.x, enemyIso.y - 14f, radius, palette.gridOutline, 16, false, 2f)
+                            if (enemySpritesAvailable && !isLowSpecMode) {
+                                val profileId = EnemySpriteAtlas.profileIdFor(enemy)
+                                enemySpriteBatches[profileId]?.let { enemyBatch ->
+                                    batch.flush()
+                                    enemyBatch.begin()
+                                    enemyBatch.drawSprite(
+                                        centerX = enemyIso.x,
+                                        bottomY = enemyIso.y + 6f,
+                                        width = EnemySpriteAtlas.widthFor(enemy),
+                                        height = EnemySpriteAtlas.heightFor(enemy),
+                                        frameIndex = EnemySpriteAtlas.frameFor(enemy, enemyAnimationClock),
+                                        flipX = EnemySpriteAtlas.flipX(enemy)
+                                    )
+                                    enemyBatch.flush()
+                                    resumePrimitiveBatch()
+                                }
+                            } else {
+                                batch.drawCircle(enemyIso.x, enemyIso.y - 14f, radius, enemyColor, 16, true)
+                                batch.drawCircle(enemyIso.x, enemyIso.y - 14f, radius, palette.gridOutline, 16, false, 2f)
 
-                            // Direction line
-                            val dirIsoX = (cos(enemy.directionAngle) - sin(enemy.directionAngle)) * (radius / 2f + 4f)
-                            val dirIsoY = (cos(enemy.directionAngle) + sin(enemy.directionAngle)) * (radius / 2f + 4f)
-                            batch.drawLine(enemyIso.x, enemyIso.y - 14f, enemyIso.x + dirIsoX, enemyIso.y - 14f + dirIsoY, palette.terminalColor, 2.5f)
+                                // Direction line remains a fallback diagnostic presentation.
+                                val dirIsoX = (cos(enemy.directionAngle) - sin(enemy.directionAngle)) * (radius / 2f + 4f)
+                                val dirIsoY = (cos(enemy.directionAngle) + sin(enemy.directionAngle)) * (radius / 2f + 4f)
+                                batch.drawLine(enemyIso.x, enemyIso.y - 14f, enemyIso.x + dirIsoX, enemyIso.y - 14f + dirIsoY, palette.terminalColor, 2.5f)
+                            }
 
                             // HP Bar if damaged
                             if (enemy.health < enemy.maxHealth) {
@@ -331,6 +375,7 @@ class GlIsoRenderer(private val assetManager: AssetManager) : GLSurfaceView.Rend
                         )
                     }
                     spriteBatch.flush()
+                    resumePrimitiveBatch()
                 }
             }
         }
