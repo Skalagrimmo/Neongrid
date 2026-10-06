@@ -1,0 +1,149 @@
+{
+  "image": "pedestrians_atlas.webp",
+  "cellWidth": 64,
+  "cellHeight": 88,
+  "columns": 8,
+  "rows": 4,
+  "frameCount": 26,
+  "frames": [
+    [
+      "idle_01",
+      0
+    ],
+    [
+      "idle_02",
+      1
+    ],
+    [
+      "idle_03",
+      2
+    ],
+    [
+      "idle_04",
+      3
+    ],
+    [
+      "walk_01",
+      4
+    ],
+    [
+      "walk_02",
+      5
+    ],
+    [
+      "walk_03",
+      6
+    ],
+    [
+      "walk_04",
+      7
+    ],
+    [
+      "walk_05",
+      8
+    ],
+    [
+      "walk_06",
+      9
+    ],
+    [
+      "walk_07",
+      10
+    ],
+    [
+      "walk_08",
+      11
+    ],
+    [
+      "walk_09",
+      12
+    ],
+    [
+      "walk_10",
+      13
+    ],
+    [
+      "walk_11",
+      14
+    ],
+    [
+      "walk_12",
+      15
+    ],
+    [
+      "walk_13",
+      16
+    ],
+    [
+      "walk_14",
+      17
+    ],
+    [
+      "chat_01",
+      18
+    ],
+    [
+      "chat_02",
+      19
+    ],
+    [
+      "gesture_01",
+      20
+    ],
+    [
+      "gesture_02",
+      21
+    ],
+    [
+      "hurt_01",
+      22
+    ],
+    [
+      "death_01",
+      23
+    ],
+    [
+      "down_01",
+      24
+    ],
+    [
+      "vendor_01",
+      25
+    ]
+  ],
+  "clips": {
+    "idle": [
+      "idle_01",
+      "idle_02",
+      "idle_03",
+      "idle_04"
+    ],
+    "walk": [
+      "walk_06",
+      "walk_07",
+      "walk_08",
+      "walk_09"
+    ],
+    "social_chat": [
+      "chat_01",
+      "chat_02"
+    ],
+    "gesture": [
+      "gesture_01",
+      "gesture_02"
+    ],
+    "hurt": [
+      "hurt_01"
+    ],
+    "death": [
+      "death_01"
+    ],
+    "down": [
+      "down_01"
+    ],
+    "vendor": [
+      "vendor_01"
+    ]
+  },
+  "note": "Reference sheet cropped to transparent pixel-art atlas; nearest-neighbor sampling is required."
+}
