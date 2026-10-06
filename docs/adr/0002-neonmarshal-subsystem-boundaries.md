@@ -71,7 +71,7 @@ NeonMarshal will use the following ownership model:
 
 | Component | Baseline |
 | --- | --- |
-| NanoMarshal | GitHub submodule `neonmarshal-core`, pinned at `62ee54b` |
+| NanoMarshal | GitHub submodule `neonmarshal-core`, pinned at `4388eeb` |
 | Neongrid | foundation branch `neonmarshal-foundation`, isolated from `main` |
 | PixelGen | `1.0.0 stable` |
 | EBE | `1.0.0 stable` |
@@ -148,7 +148,7 @@ NeonMarshalCoordinator
 
 The facade translates only session lifecycle and terminal state back into Neongrid's neutral contract. It does not make NanoMarshal a second semantic-world authority, and it does not write world truth back into PixelGen.
 
-Semantic world-event intake is now a real in-process boundary: Coordinator-delivered PixelGen events are validated by the facade and accepted by NanoMarshal's tactical core through a bounded event log. `SemanticTacticalEventHandlerRegistry` then interprets the supported `front_*` and `territory_*` events into NanoMarshal-owned derived state (`frontPressure`, `territoryControl`, and `alertLevel`). Unknown kinds remain logged but have no tactical interpretation. Duplicate event IDs are idempotent, and event revisions are monotonic; none of this grants NanoMarshal write access to PixelGen.
+Semantic world-event intake is now a real in-process boundary: Coordinator-delivered PixelGen events are validated by the facade and accepted by NanoMarshal's tactical core through a bounded event log. `SemanticTacticalEventHandlerRegistry` then interprets the supported `front_*` and `territory_*` events into NanoMarshal-owned derived state (`frontPressure`, `territoryControl`, and `alertLevel`). `TacticalSemanticState` is consumed by the tactical AI as bounded perception modifiers: world pressure can raise local alert floors and expand vision/hearing within fixed limits. Unknown kinds remain logged but have no tactical interpretation. Duplicate event IDs are idempotent, and event revisions are monotonic; none of this grants NanoMarshal write access to PixelGen.
 
 ## Validation status
 
@@ -167,5 +167,6 @@ The current validation gates for this binding are passing:
 - `:app:compileDebugUnitTestKotlin` — successful after repairing three stale `CombatSystemTest` fixtures.
 - `NanoMarshalGameEngineFacadeTest` — targeted JVM test task successful.
 - `SemanticTacticalEventHandlerRegistryTest` — supported event mapping, clamping, unknown-event behavior, and registry coverage.
+- `TacticalSemanticAwarenessTest` — bounded alert, vision, and hearing modifiers derived from semantic pressure.
 
 A full Gradle/Android test run remains a broader environment-level gate and is not represented as passing by this ADR.
