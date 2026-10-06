@@ -61,6 +61,53 @@ class NanoMarshalGameEngineFacadeTest {
     }
 
     @Test
+    fun forwardsSemanticWorldEventsToEngine() {
+        val mission = DefaultMissions.MISSION_1
+        val fakeEngine = FakeEngine(mission)
+        val facade = NanoMarshalGameEngineFacade(
+            missionResolver = NanoMarshalMissionResolver { mission },
+            engineFactory = NanoMarshalEngineFactory { fakeEngine }
+        )
+
+        facade.startSession("one", worldRef())
+        facade.applyWorldEvents(
+            listOf(
+                com.example.neonmarshal.bridge.SemanticWorldEvent(
+                    eventId = "event-8",
+                    worldId = "m_outpost9",
+                    revision = 8L,
+                    kind = "territory_alert",
+                    payloadJson = """{"level":2}"""
+                )
+            )
+        )
+
+        assertEquals(listOf("event-8"), fakeEngine.events.map { it.eventId })
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsEventFromAnotherWorld() {
+        val mission = DefaultMissions.MISSION_1
+        val facade = NanoMarshalGameEngineFacade(
+            missionResolver = NanoMarshalMissionResolver { mission },
+            engineFactory = NanoMarshalEngineFactory { FakeEngine(mission) }
+        )
+
+        facade.startSession("one", worldRef())
+        facade.applyWorldEvents(
+            listOf(
+                com.example.neonmarshal.bridge.SemanticWorldEvent(
+                    eventId = "event-8",
+                    worldId = "other-world",
+                    revision = 8L,
+                    kind = "territory_alert",
+                    payloadJson = "{}"
+                )
+            )
+        )
+    }
+
+    @Test
     fun nonVictoryFinishProducesNoReward() {
         val mission = DefaultMissions.MISSION_1
         val facade = NanoMarshalGameEngineFacade(
@@ -88,6 +135,11 @@ class NanoMarshalGameEngineFacadeTest {
         private val _state = MutableStateFlow(GameState(currentMission = mission))
         override val gameState = _state.asStateFlow()
         val updates = mutableListOf<Long>()
+        val events = mutableListOf<com.example.neonmarshal.bridge.SemanticWorldEvent>()
+
+        override fun applyWorldEvents(events: List<com.example.neonmarshal.bridge.SemanticWorldEvent>) {
+            this.events += events
+        }
 
         override fun update(deltaMs: Long) {
             updates += deltaMs

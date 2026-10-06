@@ -1,5 +1,6 @@
 package com.example.neonmarshal.nanomarshal
 
+import com.example.neonmarshal.bridge.SemanticWorldEvent
 import com.example.neonmarshal.bridge.SemanticWorldRef
 import com.example.neonmarshal.bridge.TacticalSessionResult
 import org.junit.Assert.assertEquals
@@ -22,6 +23,30 @@ class NanoMarshalRuntimeAdapterTest {
         assertEquals(listOf("start:session-a:world-a:7", "step:16", "finish"), facade.calls)
         assertEquals("session-a", result.sessionId)
         assertNull(adapter.activeSessionId())
+    }
+
+    @Test
+    fun delegatesSemanticWorldEvents() {
+        val facade = RecordingFacade()
+        val adapter = NanoMarshalRuntimeAdapter(facade)
+
+        adapter.startSession(
+            "session-a",
+            SemanticWorldRef("world-a", 7L, "fp")
+        )
+        adapter.applyWorldEvents(
+            listOf(
+                SemanticWorldEvent(
+                    eventId = "event-8",
+                    worldId = "world-a",
+                    revision = 8L,
+                    kind = "territory_alert",
+                    payloadJson = "{}"
+                )
+            )
+        )
+
+        assertEquals(listOf("start:session-a:world-a:7", "event:event-8:8"), facade.calls)
     }
 
     @Test
@@ -60,6 +85,10 @@ class NanoMarshalRuntimeAdapterTest {
             world: SemanticWorldRef
         ) {
             calls += "start:" + sessionId + ":" + world.worldId + ":" + world.revision
+        }
+
+        override fun applyWorldEvents(events: List<SemanticWorldEvent>) {
+            events.forEach { calls += "event:" + it.eventId + ":" + it.revision }
         }
 
         override fun step(deltaMs: Long) {

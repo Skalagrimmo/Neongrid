@@ -148,7 +148,7 @@ NeonMarshalCoordinator
 
 The facade translates only session lifecycle and terminal state back into Neongrid's neutral contract. It does not make NanoMarshal a second semantic-world authority, and it does not write world truth back into PixelGen.
 
-Semantic world-event injection into the tactical engine remains a follow-up boundary. The current binding therefore proves real in-process tactical engine ownership without pretending that PixelGen/EBE synchronization is complete.
+Semantic world-event intake is now a real in-process boundary: Coordinator-delivered PixelGen events are validated by the facade and accepted by NanoMarshal's tactical core through a bounded event log. Concrete gameplay effects remain behind a separate handler layer; the current binding therefore proves event transport without inventing tactical interpretations or making NanoMarshal a second semantic-world authority.
 
 ## Validation status
 

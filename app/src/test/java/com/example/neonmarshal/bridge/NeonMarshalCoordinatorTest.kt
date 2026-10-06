@@ -58,10 +58,17 @@ class NeonMarshalCoordinatorTest {
             }
         }
 
-        val tactical = object : TacticalRuntimeAdapter {
+        val tacticalEvents = mutableListOf<SemanticWorldEvent>()
+
+        val tactical = object : TacticalRuntimeAdapter, TacticalWorldEventSink {
             override fun startSession(sessionId: String, world: SemanticWorldRef) {
                 calls += "tactical.start"
                 assertEquals("fp-7301", world.fingerprint)
+            }
+
+            override fun applyWorldEvents(events: List<SemanticWorldEvent>) {
+                calls += "tactical.events"
+                tacticalEvents += events
             }
 
             override fun step(deltaMs: Long) {
@@ -121,8 +128,11 @@ class NeonMarshalCoordinatorTest {
         )
 
         assertEquals(listOf("request-1"), requests.map { it.requestId })
+        assertEquals(listOf("event-4"), tacticalEvents.map { it.eventId })
         assertTrue(
-            calls.indexOf("world.poll") < calls.indexOf("ebe.stage") &&
+            calls.indexOf("world.poll") < calls.indexOf("tactical.events") &&
+                calls.indexOf("tactical.events") < calls.indexOf("ebe.stage") &&
+                calls.indexOf("ebe.stage") < calls.indexOf("ebe.assign") &&
                 calls.indexOf("ebe.assign") < calls.indexOf("ebe.actions") &&
                 calls.indexOf("ebe.actions") < calls.indexOf("tactical.step")
         )

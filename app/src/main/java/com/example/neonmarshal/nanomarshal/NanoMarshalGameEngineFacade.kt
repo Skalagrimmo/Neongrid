@@ -3,6 +3,7 @@ package com.example.neonmarshal.nanomarshal
 import com.example.nanomarshal.core.engine.GameEngine
 import com.example.nanomarshal.core.engine.GameState
 import com.example.nanomarshal.core.model.Mission
+import com.example.neonmarshal.bridge.SemanticWorldEvent
 import com.example.neonmarshal.bridge.SemanticWorldRef
 import com.example.neonmarshal.bridge.TacticalSessionResult
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 interface NanoMarshalEngine {
     val mission: Mission
     val gameState: StateFlow<GameState>
+
+    fun applyWorldEvents(events: List<SemanticWorldEvent>)
 
     fun update(deltaMs: Long)
 }
@@ -30,10 +33,23 @@ class GameEngineNanoMarshalEngine(
     override val gameState: StateFlow<GameState>
         get() = delegate.gameState
 
+    override fun applyWorldEvents(events: List<SemanticWorldEvent>) {
+        delegate.applyWorldEvents(events.map(::toTacticalEvent))
+    }
+
     override fun update(deltaMs: Long) {
         delegate.update(deltaMs)
     }
 }
+
+private fun toTacticalEvent(event: SemanticWorldEvent) =
+    com.example.nanomarshal.core.engine.SemanticTacticalEvent(
+        eventId = event.eventId,
+        worldId = event.worldId,
+        revision = event.revision,
+        kind = event.kind,
+        payloadJson = event.payloadJson
+    )
 
 fun interface NanoMarshalMissionResolver {
     fun resolve(world: SemanticWorldRef): Mission
@@ -85,6 +101,30 @@ class NanoMarshalGameEngineFacade(
         activeSessionId = sessionId
         activeWorld = world
         activeEngine = engine
+    }
+
+    override fun applyWorldEvents(events: List<SemanticWorldEvent>) {
+        check(activeSessionId != null) {
+            "NanoMarshal facade session has not been started"
+        }
+        val world = checkNotNull(activeWorld)
+
+        events.forEach { event ->
+            require(event.worldId == world.worldId) {
+                "Semantic event world id does not match active tactical world"
+            }
+            require(event.revision >= world.revision) {
+                "Semantic event revision precedes active tactical world revision"
+            }
+            require(event.eventId.isNotBlank()) {
+                "Semantic event id must not be blank"
+            }
+            require(event.kind.isNotBlank()) {
+                "Semantic event kind must not be blank"
+            }
+        }
+
+        activeEngine?.applyWorldEvents(events)
     }
 
     override fun step(deltaMs: Long) {

@@ -59,6 +59,10 @@ class NeonMarshalCoordinator(
         )
         events.maxOfOrNull { it.revision }?.let { lastKnownRevision = it }
 
+        if (events.isNotEmpty() && tactical is TacticalWorldEventSink) {
+            tactical.applyWorldEvents(events)
+        }
+
         if (observations.isNotEmpty()) {
             epistemic.stageObservations(observations)
             epistemic.assignLocalObservations()

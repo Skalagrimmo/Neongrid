@@ -1,8 +1,10 @@
 package com.example.neonmarshal.nanomarshal
 
+import com.example.neonmarshal.bridge.SemanticWorldEvent
 import com.example.neonmarshal.bridge.SemanticWorldRef
 import com.example.neonmarshal.bridge.TacticalRuntimeAdapter
 import com.example.neonmarshal.bridge.TacticalSessionResult
+import com.example.neonmarshal.bridge.TacticalWorldEventSink
 
 /**
  * Narrow boundary around the NanoMarshal runtime.
@@ -16,6 +18,8 @@ interface NanoMarshalFacade {
         sessionId: String,
         world: SemanticWorldRef
     )
+
+    fun applyWorldEvents(events: List<SemanticWorldEvent>)
 
     fun step(deltaMs: Long)
 
@@ -31,7 +35,7 @@ interface NanoMarshalFacade {
  */
 class NanoMarshalRuntimeAdapter(
     private val facade: NanoMarshalFacade
-) : TacticalRuntimeAdapter {
+) : TacticalRuntimeAdapter, TacticalWorldEventSink {
 
     private var activeSessionId: String? = null
 
@@ -48,6 +52,15 @@ class NanoMarshalRuntimeAdapter(
 
         facade.startSession(sessionId, world)
         activeSessionId = sessionId
+    }
+
+    override fun applyWorldEvents(events: List<SemanticWorldEvent>) {
+        check(activeSessionId != null) {
+            "NanoMarshal tactical session has not been started"
+        }
+        if (events.isNotEmpty()) {
+            facade.applyWorldEvents(events)
+        }
     }
 
     override fun step(deltaMs: Long) {
