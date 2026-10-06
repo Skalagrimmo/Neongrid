@@ -31,6 +31,7 @@ class CombatSystemTest {
         )
         val enemy = Enemy(
             id = "e1",
+            name = "Test Enemy",
             pos = Point3D(5.5f, 5.5f, 1f),
             health = 100f,
             maxHealth = 100f
@@ -62,6 +63,7 @@ class CombatSystemTest {
         )
         val enemy = Enemy(
             id = "e1",
+            name = "Test Enemy",
             pos = Point3D(5.5f, 5.5f, 1f),
             health = 100f
         )
@@ -90,6 +92,7 @@ class CombatSystemTest {
         )
         val enemy = Enemy(
             id = "e1",
+            name = "Test Enemy",
             pos = Point3D(10.5f, 10.5f, 1f),
             health = 100f
         )

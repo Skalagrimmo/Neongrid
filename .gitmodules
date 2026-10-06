@@ -1,0 +1,4 @@
+[submodule "third_party/NanoMarshal"]
+	path = third_party/NanoMarshal
+	url = https://github.com/Skalagrimmo/NanoMarshal.git
+	branch = neonmarshal-core

@@ -71,8 +71,8 @@ NeonMarshal will use the following ownership model:
 
 | Component | Baseline |
 | --- | --- |
-| NanoMarshal | GitHub `main`, latest inspected commit before integration |
-| Neongrid | GitHub `main`, base runtime |
+| NanoMarshal | GitHub submodule `neonmarshal-core`, pinned at `e325541` |
+| Neongrid | foundation branch `neonmarshal-foundation`, isolated from `main` |
 | PixelGen | `1.0.0 stable` |
 | EBE | `1.0.0 stable` |
 | FPE | `1.0.0 stable` |
@@ -122,6 +122,34 @@ The EBE adapter is currently a bundle/snapshot adapter, not a full in-process co
 
 The PixelGen adapter is currently a frozen-bundle authority adapter. Before production use, its assumed public-bundle artifact names should be reconciled against an actual `write_public_bundle` output.
 
+## Concrete NanoMarshal binding
+
+NanoMarshal is now consumed as a Git submodule at `third_party/NanoMarshal`, pinned to the `neonmarshal-core` branch. Its extracted `:nanomarshal-core` Android library is included directly in the Neongrid Gradle build.
+
+The concrete bridge is:
+
+```text
+NanoMarshal GameEngine
+        │
+        v
+GameEngineNanoMarshalEngine
+        │
+        v
+NanoMarshalGameEngineFacade
+        │
+        v
+NanoMarshalRuntimeAdapter
+        │
+        v
+NeonMarshalCoordinator
+```
+
+`NanoMarshalMissionResolver` maps a semantic world reference to an explicit tactical `Mission`; the resolver remains injected so PixelGen world identifiers do not become hard-coded inside NanoMarshal.
+
+The facade translates only session lifecycle and terminal state back into Neongrid's neutral contract. It does not make NanoMarshal a second semantic-world authority, and it does not write world truth back into PixelGen.
+
+Semantic world-event injection into the tactical engine remains a follow-up boundary. The current binding therefore proves real in-process tactical engine ownership without pretending that PixelGen/EBE synchronization is complete.
+
 ## Validation status
 
 The adapter layer has JVM unit coverage for:
@@ -132,4 +160,11 @@ The adapter layer has JVM unit coverage for:
 - NanoMarshal facade lifecycle and session identity;
 - FPE projection world identity/revision/fingerprint checks.
 
-A full Gradle/Android test run remains an environment-level gate and is not represented as passing by this ADR.
+The current validation gates for this binding are passing:
+
+- `:nanomarshal-core:compileDebugKotlin` — successful in the standalone NanoMarshal branch.
+- `:app:compileDebugKotlin` — successful after the library extraction and Neongrid submodule integration.
+- `:app:compileDebugUnitTestKotlin` — successful after repairing three stale `CombatSystemTest` fixtures.
+- `NanoMarshalGameEngineFacadeTest` — targeted JVM test task successful.
+
+A full Gradle/Android test run remains a broader environment-level gate and is not represented as passing by this ADR.

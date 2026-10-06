@@ -25,3 +25,5 @@ dependencyResolutionManagement {
 rootProject.name = "My Application"
 
 include(":app")
+include(":nanomarshal-core")
+project(":nanomarshal-core").projectDir = file("third_party/NanoMarshal/nanomarshal-core")
