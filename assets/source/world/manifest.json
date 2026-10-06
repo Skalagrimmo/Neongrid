@@ -1,0 +1,47 @@
+{
+  "pack": "neonmarshal-world-reference",
+  "format": "reference-scene-v1",
+  "source": "Neongrid-generated world assets found in Downloads",
+  "assets": [
+    {
+      "id": "world_reference_01",
+      "file": "world_reference_01.png",
+      "size": "1408x768",
+      "role": "world_reference",
+      "observedCharacter": "clean neon/isometric multi-level city block"
+    },
+    {
+      "id": "world_reference_02",
+      "file": "world_reference_02.png",
+      "size": "1408x768",
+      "role": "world_reference",
+      "observedCharacter": "vertical/cutaway neon district showing multiple Z-levels"
+    },
+    {
+      "id": "world_reference_03",
+      "file": "world_reference_03.png",
+      "size": "1408x768",
+      "role": "world_reference",
+      "observedCharacter": "biocorrupted/overgrown variation of the city block"
+    },
+    {
+      "id": "world_reference_04",
+      "file": "world_reference_04.png",
+      "size": "1408x768",
+      "role": "world_reference",
+      "observedCharacter": "denser street variation with heavy environmental clutter/overgrowth"
+    }
+  ],
+  "integration": {
+    "runtime": false,
+    "reason": "These files are scene/reference plates, not tile or prop atlases.",
+    "nextExtraction": [
+      "background/facade motifs",
+      "neon signage",
+      "street furniture",
+      "vertical/Z-level motifs",
+      "corruption/overgrowth motifs",
+      "lighting/palette references"
+    ]
+  }
+}
