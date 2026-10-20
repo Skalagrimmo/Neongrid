@@ -5,29 +5,21 @@ import com.example.neonmarshal.bridge.TacticalSessionResult
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class NeonMarshalSessionResultRow(
-    val sessionId: String,
-    val worldRevision: Long,
-    val outcome: String,
-    val emittedEventsJson: String,
-    val rewardCredits: Int,
-    val rewardXp: Int
-)
-
 object NeonMarshalSessionResultMapper {
-    fun toRow(result: TacticalSessionResult): NeonMarshalSessionResultRow {
+    fun toRow(result: TacticalSessionResult, savedAt: Long = 0L): NeonMarshalSessionResultEntity {
         require(result.sessionId.isNotBlank())
-        return NeonMarshalSessionResultRow(
+        return NeonMarshalSessionResultEntity(
             sessionId = result.sessionId,
             worldRevision = result.worldRevision,
             outcome = result.outcome,
             emittedEventsJson = encodeEvents(result.emittedEvents),
             rewardCredits = result.rewardCredits,
-            rewardXp = result.rewardXp
+            rewardXp = result.rewardXp,
+            savedAt = savedAt
         )
     }
 
-    fun fromRow(row: NeonMarshalSessionResultRow): TacticalSessionResult =
+    fun fromRow(row: NeonMarshalSessionResultEntity): TacticalSessionResult =
         TacticalSessionResult(
             sessionId = row.sessionId,
             worldRevision = row.worldRevision,
