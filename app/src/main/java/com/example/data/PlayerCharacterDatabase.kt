@@ -50,7 +50,12 @@ abstract class PlayerCharacterDatabase : RoomDatabase() {
                     PlayerCharacterDatabase::class.java,
                     "player_character_database"
                 )
-                .fallbackToDestructiveMigration(dropAllTables = true)
+                // No destructive fallback for current-version upgrades:
+                // character data must survive. Only pre-baseline installs
+                // (versions 1..3 without recorded migrations) rebuild instead
+                // of crashing; downgrades wipe for dev safety.
+                .fallbackToDestructiveMigrationFrom(true, 1, 2, 3)
+                .fallbackToDestructiveMigrationOnDowngrade(true)
                 .build()
                 INSTANCE = instance
                 instance

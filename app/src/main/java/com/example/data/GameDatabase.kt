@@ -79,7 +79,12 @@ abstract class GameDatabase : RoomDatabase() {
                     GameDatabase::class.java,
                     "neongrid_rpg_db"
                 )
-                .fallbackToDestructiveMigration(dropAllTables = true)
+                // No destructive fallback for current-version upgrades:
+                // saves must survive. Only pre-baseline installs (versions
+                // 1..4 without recorded migrations) rebuild instead of
+                // crashing; downgrades wipe for dev safety.
+                .fallbackToDestructiveMigrationFrom(true, 1, 2, 3, 4)
+                .fallbackToDestructiveMigrationOnDowngrade(true)
                 .build()
                 INSTANCE = instance
                 instance
