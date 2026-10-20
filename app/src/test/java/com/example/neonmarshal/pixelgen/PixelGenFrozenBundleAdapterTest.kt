@@ -3,7 +3,14 @@ package com.example.neonmarshal.pixelgen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+// Robolectric provides the real org.json implementation (the android.jar
+// stub in plain JVM unit tests throws "not mocked").
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class PixelGenFrozenBundleAdapterTest {
 
     private val manifest = """

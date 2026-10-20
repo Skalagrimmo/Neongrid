@@ -39,7 +39,10 @@ class DataRepositoryTest {
             inventoryDao = appDatabase.inventoryDao(),
             skillDao = appDatabase.skillDao(),
             saveStateDao = gameDatabase.saveStateDao(),
-            statusEffectDao = appDatabase.statusEffectDao()
+            statusEffectDao = appDatabase.statusEffectDao(),
+            // Mirror production wiring (di/DatabaseModule.kt): the DAO is
+            // non-null there, and DataRepository's unlock flows NPE without it.
+            unlockedSkillDao = appDatabase.unlockedSkillDao()
         )
     }
 

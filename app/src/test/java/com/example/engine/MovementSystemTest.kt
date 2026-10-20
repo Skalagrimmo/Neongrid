@@ -36,7 +36,10 @@ class MovementSystemTest {
 
     @Test
     fun processPlayerMove_updatesPlayerCoordinatesAndDirection() {
-        val player = Player(pos = Point3D(17.0f, 17.0f, 1f))
+        // Start on the Z=1 road at (17,20): the old (17,17) fixture overlaps
+        // the BARREL_EXPLOSIVE tile at (16,16) via the player's collision box
+        // (playerRadius = 0.35), so the very first move was rejected.
+        val player = Player(pos = Point3D(17.0f, 20.0f, 1f))
         val ripples = mutableListOf<NoiseRipple>()
 
         val result = movementSystem.processPlayerMove(

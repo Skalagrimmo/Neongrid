@@ -4,7 +4,14 @@ import com.example.neonmarshal.bridge.SemanticWorldEvent
 import com.example.neonmarshal.bridge.TacticalSessionResult
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+// Robolectric provides the real org.json implementation (the android.jar
+// stub in plain JVM unit tests throws "not mocked").
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class NeonMarshalSessionResultMapperTest {
     @Test
     fun `round trip preserves result and emitted events`() {
