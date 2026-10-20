@@ -32,6 +32,9 @@ android {
       keyPassword = System.getenv("KEY_PASSWORD")
     }
     create("debugConfig") {
+      // Optional repo-local debug keystore (scripts/make_debug_keystore.ps1).
+      // When absent, clean checkouts fall back to the standard AGP debug
+      // signing config below in buildTypes.debug.
       storeFile = file("${rootDir}/debug.keystore")
       storePassword = "android"
       keyAlias = "androiddebugkey"
@@ -47,7 +50,13 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      signingConfig = signingConfigs.getByName("debugConfig")
+      val repoDebugKeystore = file("${rootDir}/debug.keystore")
+      signingConfig = if (repoDebugKeystore.exists()) {
+        signingConfigs.getByName("debugConfig")
+      } else {
+        // Standard AGP debug config: auto-generates ~/.android/debug.keystore.
+        signingConfigs.getByName("debug")
+      }
     }
   }
   compileOptions {
