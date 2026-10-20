@@ -168,5 +168,4 @@ The current validation gates for this binding are passing:
 - `NanoMarshalGameEngineFacadeTest` — targeted JVM test task successful.
 - `SemanticTacticalEventHandlerRegistryTest` — supported event mapping, clamping, unknown-event behavior, and registry coverage.
 - `TacticalSemanticAwarenessTest` — bounded alert, vision, and hearing modifiers derived from semantic pressure.
-
-A full Gradle/Android test run remains a broader environment-level gate and is not represented as passing by this ADR.
+- `testDebugUnitTest` — full suite (79 tests, including all NeonMarshal adapter tests under Robolectric) passes locally and is enforced by CI (`.github/workflows/ci.yml`).

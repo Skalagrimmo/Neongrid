@@ -33,25 +33,28 @@ Near-term architecture priorities:
 3. Use one documented persistence boundary and keep save/load conversion in mapper classes instead of view models.
 4. Move balancing data for equipment, skills, enemies, and objectives toward validated data files.
 5. Prefer Compose-observable state containers when lists of enemies, noise ripples, projectiles, or explored tiles change.
-3. Use one documented persistence boundary and avoid multiple competing repositories for the same gameplay data.
-4. Move balancing data for equipment, skills, enemies, and objectives toward validated data files.
-5. Prefer state containers that Compose can observe reliably when lists of enemies, noise ripples, projectiles, or explored tiles change.
 
 See [`docs/adr/0001-persistence-boundary.md`](docs/adr/0001-persistence-boundary.md) for the initial persistence decision and [`PROJECT_ROADMAP_UK.md`](PROJECT_ROADMAP_UK.md) for a broader Ukrainian roadmap.
 
 ## Build and test
 
-The repository currently does not include a Gradle wrapper, so use a locally installed Gradle distribution that is compatible with the configured Android Gradle Plugin and Kotlin versions.
-
-Useful checks:
+The repository ships with a Gradle wrapper (Gradle 9.3.1), so no locally installed Gradle is required — only a JDK (21 recommended) and the Android SDK.
 
 ```bash
-gradle testDebugUnitTest
-gradle lintDebug
-gradle assembleDebug
+./gradlew testDebugUnitTest
+./gradlew lintDebug
+./gradlew assembleDebug
 ```
 
-If these fail during Gradle configuration, first verify the local JDK, Android SDK, Gradle, and Android Gradle Plugin compatibility.
+Debug builds are signed with the standard AGP debug key by default. To use a repo-local `debug.keystore` instead (it is gitignored), generate it once:
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/make_debug_keystore.ps1
+```
+
+CI (GitHub Actions) runs `lintDebug`, `testDebugUnitTest`, and `assembleDebug` on every push and pull request — see `.github/workflows/ci.yml`.
+
+If Gradle configuration fails, first verify the local JDK, Android SDK, and Android Gradle Plugin compatibility.
 
 ## Recommended next milestone
 
