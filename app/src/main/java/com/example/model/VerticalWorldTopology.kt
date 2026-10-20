@@ -24,8 +24,14 @@ data class VerticalConnector(
     val sourceGrid: GridPos
         get() = GridPos(source.x.toInt(), source.y.toInt(), source.z.toInt())
 
+    val sourceZ: Int
+        get() = source.z.toInt()
+
     val destinationGrid: GridPos
         get() = GridPos(destination.x.toInt(), destination.y.toInt(), destination.z.toInt())
+
+    val destinationZ: Int
+        get() = destination.z.toInt()
 
     fun connects(from: GridPos, to: GridPos): Boolean {
         val forward = sourceGrid == from && destinationGrid == to
@@ -67,8 +73,7 @@ class VerticalWorldTopology(
         connectors.forEach { connector ->
             if (connector.sourceGrid == connector.destinationGrid) {
                 errors += "Connector '${connector.id}' has identical endpoints"
-            }
-            if (connector.sourceZ == connector.destinationZ) {
+            } else if (connector.sourceZ == connector.destinationZ) {
                 errors += "Connector '${connector.id}' does not change Z level"
             }
         }
